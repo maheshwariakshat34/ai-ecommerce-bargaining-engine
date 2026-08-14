@@ -1,5 +1,5 @@
 from flask import Flask
-
+from backend.routes.product_routes import product_bp
 from backend.config import Config
 from backend.models.product import db
 
@@ -10,7 +10,9 @@ def create_app():
 
     app.config.from_object(Config)
 
+
     db.init_app(app)
+    app.register_blueprint(product_bp)
 
     with app.app_context():
         db.create_all()

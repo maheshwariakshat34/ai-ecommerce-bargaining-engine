@@ -25,5 +25,15 @@ class Product(db.Model):
 
     days_to_expiry = db.Column(db.Integer, nullable=True)
 
-    def __repr__(self):
-        return f"<Product {self.name}>"
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "category": self.category,
+            "base_price": self.base_price,
+            "cost_price": self.cost_price,
+            "minimum_price": self.minimum_price,
+            "stock": self.stock,
+            "inventory_age": self.inventory_age,
+            "days_to_expiry": self.days_to_expiry
+        }
