@@ -54,6 +54,7 @@ products = [
         stock=10,
         inventory_age=45
     )
+
 ]
 
 
