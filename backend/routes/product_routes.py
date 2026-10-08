@@ -31,7 +31,11 @@ def add_product():
         minimum_price=data["minimum_price"],
         stock=data["stock"],
         inventory_age=data.get("inventory_age", 0),
-        days_to_expiry=data.get("days_to_expiry")
+        days_to_expiry=data.get("days_to_expiry"),
+        sales_last_7_days = data.get("sales_last_7_days", 0),
+        sales_last_30_days = data.get("sales_last_30_days", 0),
+        demand_level = data.get("demand_level", "MEDIUM"),
+        seasonal_factor = data.get("seasonal_factor", 0)
     )
 
     db.session.add(product)
@@ -70,6 +74,25 @@ def update_product(product_id):
     product.days_to_expiry = data.get(
         "days_to_expiry",
         product.days_to_expiry
+    )
+    product.sales_last_7_days = data.get(
+        "sales_last_7_days",
+        product.sales_last_7_days
+    )
+
+    product.sales_last_30_days = data.get(
+        "sales_last_30_days",
+        product.sales_last_30_days
+    )
+
+    product.demand_level = data.get(
+        "demand_level",
+        product.demand_level
+    )
+
+    product.seasonal_factor = data.get(
+        "seasonal_factor",
+        product.seasonal_factor
     )
 
     db.session.commit()
