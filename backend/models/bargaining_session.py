@@ -53,9 +53,5 @@ class BargainingSession(db.Model):
             "current_round": self.current_round,
             "max_rounds": self.max_rounds,
             "status": self.status,
-            "final_price": self.final_price,
-            "sales_last_7_days": self.sales_last_7_days,
-            "sales_last_30_days": self.sales_last_30_days,
-            "demand_level": self.demand_level,
-            "seasonal_factor": self.seasonal_factor
+            "final_price": self.final_price
         }

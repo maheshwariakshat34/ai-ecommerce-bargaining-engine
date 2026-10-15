@@ -1,80 +1,49 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request, jsonify
 
-from backend.models.product import Product, db
-from backend.models.offer import Offer
+
+from backend.models.product import Product,db
 from backend.models.bargaining_session import BargainingSession
+from backend.models.offer import Offer
+from backend.services.pricing_engine import calculate_pricing
 
 
-offer_bp = Blueprint("offer", __name__)
-
-
-# --------------------------------------------------
-# BULK DISCOUNT
-# --------------------------------------------------
-
-def calculate_bulk_discount(quantity, base_price):
-
-    if quantity >= 10:
-        discount_percent = 8
-
-    elif quantity >= 5:
-        discount_percent = 5
-
-    elif quantity >= 3:
-        discount_percent = 3
-
-    else:
-        discount_percent = 0
-
-    base_total = base_price * quantity
-
-    discount_amount = (
-        base_total * discount_percent / 100
-    )
-
-    discounted_total = (
-        base_total - discount_amount
-    )
-
-    return (
-        discount_percent,
-        round(discount_amount, 2),
-        round(discounted_total, 2)
-    )
+offer_bp = Blueprint("offer_bp", __name__)
 
 
 # --------------------------------------------------
-# CREATE BARGAINING SESSION
+# START BARGAINING SESSION
 # --------------------------------------------------
-
 @offer_bp.route("/api/bargaining/start", methods=["POST"])
 def start_bargaining():
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     product_id = data.get("product_id")
     quantity = data.get("quantity", 1)
 
-    if product_id is None:
+    try:
+        product_id = int(product_id)
+        quantity = int(quantity)
+    except (TypeError, ValueError):
         return jsonify({
-            "message": "product_id is required"
+            "error": "product_id and quantity must be valid integers."
         }), 400
-
-    product = Product.query.get(product_id)
-
-    if not product:
-        return jsonify({
-            "message": "Product not found"
-        }), 404
 
     if quantity <= 0:
         return jsonify({
-            "message": "Quantity must be greater than 0"
+            "error": "Quantity must be greater than zero."
         }), 400
+
+    product = db.session.get(Product, product_id)
+
+    if not product:
+        return jsonify({
+            "error": "Product not found."
+        }), 404
 
     if quantity > product.stock:
         return jsonify({
-            "message": "Not enough stock available"
+            "error": "Requested quantity exceeds available stock.",
+            "available_stock": product.stock
         }), 400
 
     session = BargainingSession(
@@ -89,242 +58,170 @@ def start_bargaining():
     db.session.commit()
 
     return jsonify({
-        "message": "Bargaining session started",
-        "session": session.to_dict()
+        "message": "Bargaining session started successfully.",
+        "session": session.to_dict(),
+        "product": {
+            "id": product.id,
+            "name": product.name,
+            "base_price": product.base_price,
+            "quantity": quantity
+        }
     }), 201
 
 
 # --------------------------------------------------
-# MAKE OFFER
+# SUBMIT CUSTOMER OFFER
 # --------------------------------------------------
-
 @offer_bp.route("/api/bargaining/offer", methods=["POST"])
-def make_offer():
-
-    data = request.get_json()
+def submit_offer():
+    data = request.get_json(silent=True) or {}
 
     session_id = data.get("session_id")
     customer_offer = data.get("customer_offer")
 
-    if session_id is None or customer_offer is None:
-
+    try:
+        session_id = int(session_id)
+        customer_offer = float(customer_offer)
+    except (TypeError, ValueError):
         return jsonify({
-            "message": "session_id and customer_offer are required"
+            "error": "session_id and customer_offer are required and must be valid numbers."
         }), 400
 
-    # --------------------------------------------------
-    # FIND SESSION
-    # --------------------------------------------------
+    if customer_offer <= 0:
+        return jsonify({
+            "error": "Customer offer must be greater than zero."
+        }), 400
 
-    session = BargainingSession.query.get(session_id)
+    session = db.session.get(BargainingSession, session_id)
 
     if not session:
-
         return jsonify({
-            "message": "Bargaining session not found"
+            "error": "Bargaining session not found."
         }), 404
 
-    # --------------------------------------------------
-    # CHECK SESSION STATUS
-    # --------------------------------------------------
-
     if session.status != "ACTIVE":
-
         return jsonify({
-            "message": "This bargaining session is already closed",
-            "status": session.status
+            "error": "This bargaining session is no longer active.",
+            "session_status": session.status,
+            "final_price": session.final_price
         }), 400
 
-    # --------------------------------------------------
-    # CHECK ROUND
-    # --------------------------------------------------
-
-    current_round = session.current_round
-
-    if current_round > session.max_rounds:
-
-        session.status = "EXPIRED"
-
-        db.session.commit()
-
-        return jsonify({
-            "message": "Maximum bargaining rounds reached"
-        }), 400
-
-    # --------------------------------------------------
-    # PRODUCT
-    # --------------------------------------------------
-
-    product = Product.query.get(session.product_id)
+    product = db.session.get(Product, session.product_id)
 
     if not product:
-
         return jsonify({
-            "message": "Product not found"
+            "error": "Product associated with this session was not found."
         }), 404
 
     quantity = session.quantity
+    current_round = session.current_round
 
     # --------------------------------------------------
-    # PRICE CALCULATIONS
+    # CALCULATE PRICING
     # --------------------------------------------------
+    try:
+        pricing = calculate_pricing(product, quantity)
+    except (ValueError, TypeError, AttributeError) as error:
+        return jsonify({
+            "error": "Unable to calculate product pricing.",
+            "details": str(error)
+        }), 400
 
-    base_total = (
-        product.base_price * quantity
-    )
+    clearance_total = float(pricing["clearance_total"])
+    bulk_price = float(pricing["bulk_price"])
+    cost_total = float(pricing["cost_total"])
+    normal_minimum_total = float(pricing["normal_minimum_total"])
 
-    minimum_total = (
-        product.minimum_price * quantity
-    )
+    # Normal bargaining floor is the seller's minimum price.
+    # During clearance, the price may go below that minimum,
+    # but must not go below the total cost price.
+    if clearance_total < normal_minimum_total:
+        negotiation_floor = cost_total
+    else:
+        negotiation_floor = max(cost_total, normal_minimum_total)
 
-    (
-        bulk_discount_percent,
-        bulk_discount_amount,
-        bulk_price
-    ) = calculate_bulk_discount(
-        quantity,
-        product.base_price
-    )
+    # The customer must never be charged above the calculated
+    # target price just because they submitted a higher offer.
+    target_price = round(max(bulk_price, negotiation_floor), 2)
 
-    # Never go below seller minimum
-
-    bulk_price = max(
-        bulk_price,
-        minimum_total
-    )
-
-    bulk_price = round(
-        bulk_price,
-        2
-    )
+    customer_offer = round(customer_offer, 2)
 
     # --------------------------------------------------
     # BARGAINING DECISION
     # --------------------------------------------------
-
     decision = None
     final_price = None
     counter_price = None
+    response_message = ""
 
-    # ==================================================
-    # ROUND 1
-    # ==================================================
+    is_final_round = current_round >= session.max_rounds
 
-    if current_round == 1:
+    if not is_final_round:
 
-        # Very good offer
-        if customer_offer >= bulk_price:
-
+        # Offer meets the target: accept at the target price.
+        if customer_offer >= target_price:
             decision = "ACCEPT"
+            final_price = target_price
+            response_message = (
+                f"Offer accepted at the target price of "
+                f"{final_price:.2f}."
+            )
 
-            final_price = customer_offer
-
-        # Reasonable offer
-        elif customer_offer >= minimum_total * 0.90:
-
+        # Reasonable but lower offer: seller makes a counter-offer.
+        elif customer_offer >= target_price * 0.80:
             decision = "COUNTER"
 
-            # Conservative first counter
-            negotiation_gap = (
-                bulk_price - minimum_total
-            )
-
-            counter_price = (
-                bulk_price
-                - negotiation_gap * 0.25
-            )
-
-            counter_price = max(
-                counter_price,
-                minimum_total
-            )
-
             counter_price = round(
-                counter_price,
-                2
-            )
-
-        else:
-
-            decision = "REJECT"
-
-    # ==================================================
-    # ROUND 2
-    # ==================================================
-
-    elif current_round == 2:
-
-        # Good offer
-        if customer_offer >= bulk_price * 0.97:
-
-            decision = "ACCEPT"
-
-            final_price = customer_offer
-
-        # Near minimum
-        elif customer_offer >= minimum_total * 0.92:
-
-            decision = "COUNTER"
-
-            negotiation_gap = (
-                bulk_price - minimum_total
-            )
-
-            counter_price = (
-                minimum_total
-                + negotiation_gap * 0.35
-            )
-
-            counter_price = max(
-                counter_price,
-                minimum_total
-            )
-
-            counter_price = round(
-                counter_price,
-                2
-            )
-
-        else:
-
-            decision = "REJECT"
-
-    # ==================================================
-    # ROUND 3 - FINAL ROUND
-    # ==================================================
-
-    elif current_round == 3:
-
-        # Seller's FINAL FIXED PRICE
-        final_counter_price = max(
-            minimum_total,
-            round(
-                minimum_total
-                + (
-                    (bulk_price - minimum_total)
-                    * 0.50
+                max(
+                    negotiation_floor,
+                    (customer_offer + target_price) / 2
                 ),
                 2
             )
-        )
 
-        # Customer meets final price
-        if customer_offer >= final_counter_price:
+            # Do not create a counter-price above the target.
+            counter_price = min(counter_price, target_price)
 
+            response_message = (
+                f"Seller counter-offered at {counter_price:.2f}. "
+                f"You may submit another offer."
+            )
+
+        # Extremely low offers are rejected.
+        else:
+            decision = "REJECT"
+            response_message = (
+                "Offer is too low. Please submit a more "
+                "reasonable offer in the next round."
+            )
+
+    else:
+        # ROUND 3: FINAL DECISION
+        # No further negotiation after this round.
+        if customer_offer >= target_price:
             decision = "ACCEPT"
+            final_price = target_price
+            response_message = (
+                f"Final offer accepted at {final_price:.2f}."
+            )
 
-            final_price = final_counter_price
+        elif customer_offer >= negotiation_floor:
+            decision = "ACCEPT"
+            final_price = customer_offer
+            response_message = (
+                f"Final offer accepted at {final_price:.2f}."
+            )
 
         else:
-
-            decision = "COUNTER"
-
-            counter_price = final_counter_price
+            decision = "REJECT"
+            response_message = (
+                "Final offer rejected because it is below "
+                "the minimum permitted price."
+            )
 
     # --------------------------------------------------
-    # SAVE OFFER
+    # SAVE OFFER HISTORY
     # --------------------------------------------------
-
     offer = Offer(
         product_id=product.id,
         session_id=session.id,
@@ -339,106 +236,105 @@ def make_offer():
     db.session.add(offer)
 
     # --------------------------------------------------
-    # SESSION UPDATE
+    # UPDATE SESSION STATUS
     # --------------------------------------------------
-
     if decision == "ACCEPT":
-
         session.status = "ACCEPTED"
         session.final_price = final_price
 
-    elif current_round >= session.max_rounds:
-
-        # After the final round, negotiation is closed
+    elif is_final_round:
         session.status = "CLOSED"
 
-    elif decision == "REJECT":
-
-        # Reject only the current offer.
-        # Allow the customer to make a better offer.
-        session.current_round += 1
-
     else:
-
-        # COUNTER
-        # Move to the next round
         session.current_round += 1
 
     db.session.commit()
 
     # --------------------------------------------------
-    # RESPONSE
+    # API RESPONSE
     # --------------------------------------------------
-
     return jsonify({
-
-        "message": "Offer processed successfully",
-
+        "message": response_message,
         "session_id": session.id,
-
-        "product": product.name,
-
+        "product_id": product.id,
+        "product_name": product.name,
         "quantity": quantity,
-
-        "round": current_round,
-
+        "round_number": current_round,
         "max_rounds": session.max_rounds,
-
-        "base_total": base_total,
-
-        "bulk_discount_percent": bulk_discount_percent,
-
-        "bulk_discount_amount": bulk_discount_amount,
-
-        "bulk_price": bulk_price,
-
-        "minimum_total": minimum_total,
-
-        "customer_offer": customer_offer,
-
         "decision": decision,
-
+        "customer_offer": customer_offer,
         "counter_price": counter_price,
-
         "final_price": final_price,
-
-        "session_status": session.status
-
-    }), 201
+        "session_status": session.status,
+        "pricing": {
+            "base_total": pricing["base_total"],
+            "clearance_unit_price": pricing["clearance_unit_price"],
+            "clearance_total": pricing["clearance_total"],
+            "clearance_level": pricing["clearance_level"],
+            "pressure_score": pricing["pressure_score"],
+            "clearance_reasons": pricing["clearance_reasons"],
+            "bulk_discount_percent": pricing["bulk_discount_percent"],
+            "bulk_discount_amount": pricing["bulk_discount_amount"],
+            "nominal_bulk_discount_percent": pricing[
+                "nominal_bulk_discount_percent"
+            ],
+            "nominal_bulk_discount_amount": pricing[
+                "nominal_bulk_discount_amount"
+            ],
+            "bulk_price": pricing["bulk_price"],
+            "negotiation_price": pricing["negotiation_price"],
+            "normal_minimum_total": pricing["normal_minimum_total"],
+            "cost_total": pricing["cost_total"],
+            "cost_price_reached": pricing["cost_price_reached"],
+            "negotiation_floor": round(negotiation_floor, 2),
+            "target_price": target_price
+        }
+    }), 200
 
 
 # --------------------------------------------------
-# GET BARGAINING HISTORY
+# GET BARGAINING SESSION AND HISTORY
 # --------------------------------------------------
-
 @offer_bp.route("/api/bargaining/session/<int:session_id>", methods=["GET"])
-def get_bargaining_history(session_id):
-
-    session = BargainingSession.query.get(session_id)
+def get_bargaining_session(session_id):
+    session = db.session.get(BargainingSession, session_id)
 
     if not session:
         return jsonify({
-            "message": "Bargaining session not found"
+            "error": "Bargaining session not found."
         }), 404
 
-    product = Product.query.get(session.product_id)
+    product = db.session.get(Product, session.product_id)
 
-    offers = Offer.query.filter_by(
-        session_id=session.id
-    ).order_by(
-        Offer.round_number.asc()
-    ).all()
+    offers = (
+        Offer.query
+        .filter_by(session_id=session.id)
+        .order_by(Offer.round_number.asc())
+        .all()
+    )
+
+    history = []
+
+    for offer in offers:
+        history.append({
+            "offer_id": offer.id,
+            "round_number": offer.round_number,
+            "customer_offer": offer.customer_offer,
+            "quantity": offer.quantity,
+            "seller_response": offer.seller_response,
+            "counter_price": offer.counter_price,
+            "final_price": offer.final_price
+        })
 
     return jsonify({
-
         "session": session.to_dict(),
-
-        "product": product.to_dict()
-        if product else None,
-
-        "bargaining_history": [
-            offer.to_dict()
-            for offer in offers
-        ]
-
+        "product": {
+            "id": product.id,
+            "name": product.name,
+            "base_price": product.base_price,
+            "cost_price": product.cost_price,
+            "minimum_price": product.minimum_price,
+            "stock": product.stock
+        } if product else None,
+        "bargaining_history": history
     }), 200
