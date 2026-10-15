@@ -111,7 +111,10 @@ class Product(db.Model):
         nullable=False,
         default="MEDIUM"
     )
-
+    seasonal_factor = db.Column(
+        db.Float,
+        default=0
+    )
 
     # -----------------------------------------
     # CONVERT PRODUCT TO JSON
@@ -149,5 +152,6 @@ class Product(db.Model):
 
             "demand_level": (
                 self.demand_level
-            )
+            ),
+            "seasonal_factor": self.seasonal_factor
         }

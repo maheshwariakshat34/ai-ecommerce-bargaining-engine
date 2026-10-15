@@ -24,7 +24,8 @@ products = [
         sales_last_7_days=12,
         sales_last_30_days=45,
 
-        demand_level="HIGH"
+        demand_level="HIGH",
+        seasonal_factor=0.0
     ),
 
 
@@ -48,7 +49,8 @@ products = [
         sales_last_7_days=1,
         sales_last_30_days=4,
 
-        demand_level="LOW"
+        demand_level="LOW",
+        seasonal_factor=0.0
     ),
 
 
@@ -72,7 +74,9 @@ products = [
         sales_last_7_days=4,
         sales_last_30_days=16,
 
-        demand_level="MEDIUM"
+        demand_level="MEDIUM",
+
+        seasonal_factor=0.0
     ),
 
 
@@ -96,7 +100,9 @@ products = [
         sales_last_7_days=1,
         sales_last_30_days=5,
 
-        demand_level="LOW"
+        demand_level="LOW",
+        seasonal_factor=0.0
+
     ),
 
 
@@ -120,7 +126,8 @@ products = [
         sales_last_7_days=2,
         sales_last_30_days=8,
 
-        demand_level="LOW"
+        demand_level="LOW",
+        seasonal_factor=0.0
     )
 ]
 

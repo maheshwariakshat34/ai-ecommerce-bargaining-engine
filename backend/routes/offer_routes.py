@@ -161,9 +161,9 @@ def submit_offer():
         # Offer meets the target: accept at the target price.
         if customer_offer >= target_price:
             decision = "ACCEPT"
-            final_price = target_price
+            final_price = customer_offer
             response_message = (
-                f"Offer accepted at the target price of "
+                f"Offer accepted at your offered price of "
                 f"{final_price:.2f}."
             )
 
