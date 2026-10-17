@@ -1,363 +1,194 @@
+"""
+Dynamic clearance engine (real-world style markdown pricing).
+
+Rules:
+1. Stock is measured as "days of cover" (stock / daily sales), not raw units.
+2. Sales trend matters: recent 7-day rate vs 30-day average.
+3. No discount while pressure is below CLEARANCE_THRESHOLD (healthy stock).
+4. Discount grows with pressure but is capped at MAX_DISCOUNT_PERCENT.
+5. Near-expiry products get a forced minimum pressure.
+6. Price never goes below cost_price and never above base_price.
+"""
+
+MAX_DISCOUNT_PERCENT = 50      # hard cap on clearance discount
+CLEARANCE_THRESHOLD = 0.20     # below this pressure -> no discount
+
+COVER_OK_DAYS = 30             # <= 30 days of stock is healthy
+COVER_BAD_DAYS = 120           # >= 120 days of stock is max pressure
+AGE_MAX_DAYS = 180
+EXPIRY_WINDOW_DAYS = 60
+EXPIRY_FORCE_DAYS = 7          # <= 7 days left: forced high pressure
+EXPIRY_FORCE_PRESSURE = 0.80
+
+
+def _clamp(value, low=0.0, high=1.0):
+    return max(low, min(value, high))
+
+
 def calculate_clearance_price(product):
 
-    base_price = product.base_price
-    cost_price = product.cost_price
+    base_price = float(product.base_price or 0)
+    cost_price = float(product.cost_price or 0)
+    minimum_price = float(product.minimum_price or 0)
 
-    stock = product.stock or 0
-    inventory_age = product.inventory_age or 0
-
-    demand = (
-        product.demand_level or "MEDIUM"
-    ).upper()
-
-    sales_last_7_days = (
-        product.sales_last_7_days or 0
-    )
-
-    sales_last_30_days = (
-        product.sales_last_30_days or 0
-    )
-
+    stock = max(product.stock or 0, 0)
+    inventory_age = max(product.inventory_age or 0, 0)
+    demand = (product.demand_level or "MEDIUM").upper()
+    sales_7d = max(product.sales_last_7_days or 0, 0)
+    sales_30d = max(product.sales_last_30_days or 0, 0)
     days_to_expiry = product.days_to_expiry
 
     # -----------------------------------------
-    # 1. INVENTORY PRESSURE
+    # SALES VELOCITY (units/day)
     # -----------------------------------------
-    # More stock = more clearance pressure
+    recent_rate = sales_7d / 7
+    average_rate = sales_30d / 30
 
-    inventory_pressure = min(
-        stock / 50,
-        1
+    sales_velocity = recent_rate * 0.6 + average_rate * 0.4
+
+    # -----------------------------------------
+    # 1. INVENTORY PRESSURE (days of cover)
+    # -----------------------------------------
+    if sales_velocity > 0:
+        days_of_cover = stock / sales_velocity
+    else:
+        days_of_cover = 999 if stock > 0 else 0
+
+    inventory_pressure = _clamp(
+        (days_of_cover - COVER_OK_DAYS)
+        / (COVER_BAD_DAYS - COVER_OK_DAYS)
     )
-
 
     # -----------------------------------------
     # 2. AGE PRESSURE
     # -----------------------------------------
-    # Older inventory = more pressure
-
-    age_pressure = min(
-        inventory_age / 180,
-        1
-    )
-
+    age_pressure = _clamp(inventory_age / AGE_MAX_DAYS)
 
     # -----------------------------------------
     # 3. DEMAND PRESSURE
     # -----------------------------------------
-
-    demand_map = {
+    demand_pressure = {
         "HIGH": 0.0,
         "MEDIUM": 0.5,
         "LOW": 1.0
-    }
-
-    demand_pressure = demand_map.get(
-        demand,
-        0.5
-    )
-
+    }.get(demand, 0.5)
 
     # -----------------------------------------
-    # 4. SALES VELOCITY
+    # 4. SALES TREND PRESSURE
     # -----------------------------------------
-
-    sales_velocity_7d = (
-        sales_last_7_days / 7
-    )
-
-    sales_velocity_30d = (
-        sales_last_30_days / 30
-    )
-
-    # Recent sales get higher importance
-
-    sales_velocity = (
-        sales_velocity_7d * 0.6
-        + sales_velocity_30d * 0.4
-    )
-
-
-    # Lower sales velocity = higher pressure
-
-    velocity_pressure = max(
-        0,
-        min(
-            1 - (sales_velocity / 5),
-            1
-        )
-    )
-
+    # Recent sales slower than the 30-day average = slowing demand.
+    if average_rate > 0:
+        velocity_pressure = _clamp(1 - recent_rate / average_rate)
+    else:
+        # No sales at all in 30 days
+        velocity_pressure = 1.0 if stock > 0 else 0.0
 
     # -----------------------------------------
     # 5. EXPIRY PRESSURE
     # -----------------------------------------
-
     if days_to_expiry is None:
-
-        # Products such as electronics
-        # may not have an expiry date.
-
-        expiry_pressure = 0
-
+        expiry_pressure = 0.0
     else:
-
-        expiry_pressure = max(
-            0,
-            min(
-                (60 - days_to_expiry) / 60,
-                1
-            )
+        expiry_pressure = _clamp(
+            (EXPIRY_WINDOW_DAYS - days_to_expiry) / EXPIRY_WINDOW_DAYS
         )
 
-
     # -----------------------------------------
-    # 6. TOTAL CLEARANCE PRESSURE
+    # 6. TOTAL PRESSURE
     # -----------------------------------------
-
     pressure_score = (
-
         inventory_pressure * 0.25
-
         + age_pressure * 0.20
-
-        + demand_pressure * 0.20
-
+        + demand_pressure * 0.15
         + velocity_pressure * 0.20
-
-        + expiry_pressure * 0.15
-
+        + expiry_pressure * 0.20
     )
 
-    pressure_score = min(
-        max(
-            pressure_score,
-            0
-        ),
-        1
-    )
+    # Near-expiry stock must move, whatever the other signals say
+    if days_to_expiry is not None and days_to_expiry <= EXPIRY_FORCE_DAYS:
+        pressure_score = max(pressure_score, EXPIRY_FORCE_PRESSURE)
 
+    pressure_score = _clamp(pressure_score)
 
     # -----------------------------------------
-    # 7. DYNAMIC DISCOUNT
+    # 7. DISCOUNT (thresholded + capped)
     # -----------------------------------------
-    #
-    # Maximum theoretical discount = 100%
-    #
-    # But cost_price protection below
-    # prevents selling below actual cost.
-    #
-    # Therefore the actual discount depends
-    # completely on the pressure score.
-    #
-
-    discount_percent = (
-        pressure_score * 100
-    )
-
-    discount_percent = round(
-        discount_percent,
-        2
-    )
-
-
-    # -----------------------------------------
-    # 8. CALCULATED CLEARANCE PRICE
-    # -----------------------------------------
-
-    discount_amount = (
-        base_price
-        * discount_percent
-        / 100
-    )
-
-    calculated_price = (
-        base_price
-        - discount_amount
-    )
-
-
-    # -----------------------------------------
-    # 9. ACTUAL COST PRICE PROTECTION
-    # -----------------------------------------
-    #
-    # Clearance can go below minimum_price,
-    # but NEVER below actual cost_price.
-    #
-
-    clearance_price = max(
-        calculated_price,
-        cost_price
-    )
-
-    clearance_price = round(
-        clearance_price,
-        2
-    )
-
-
-    # -----------------------------------------
-    # 10. ACTUAL DISCOUNT
-    # -----------------------------------------
-
-    if base_price > 0:
-
-        actual_discount = (
-            (
-                (base_price - clearance_price)
-                / base_price
-            )
-            * 100
+    if pressure_score < CLEARANCE_THRESHOLD:
+        discount_percent = 0.0
+    else:
+        scaled = (
+            (pressure_score - CLEARANCE_THRESHOLD)
+            / (1 - CLEARANCE_THRESHOLD)
+        )
+        discount_percent = min(
+            scaled * MAX_DISCOUNT_PERCENT,
+            MAX_DISCOUNT_PERCENT
         )
 
-    else:
+    calculated_price = base_price * (1 - discount_percent / 100)
 
-        actual_discount = 0
-
-
-    actual_discount = round(
-        actual_discount,
-        2
+    # -----------------------------------------
+    # 8. COST PROTECTION (never below cost, never above base)
+    # -----------------------------------------
+    clearance_price = round(
+        min(max(calculated_price, cost_price), base_price), 2
     )
 
+    actual_discount = (
+        round((base_price - clearance_price) / base_price * 100, 2)
+        if base_price > 0 else 0
+    )
 
     # -----------------------------------------
-    # 11. CLEARANCE LEVEL
+    # 9. CLEARANCE LEVEL
     # -----------------------------------------
-
     if pressure_score >= 0.80:
-
         clearance_level = "EXTREME"
-
     elif pressure_score >= 0.60:
-
         clearance_level = "URGENT"
-
     elif pressure_score >= 0.40:
-
         clearance_level = "HIGH"
-
     elif pressure_score >= 0.20:
-
         clearance_level = "MEDIUM"
-
     else:
-
         clearance_level = "NORMAL"
 
-
     # -----------------------------------------
-    # 12. REASONS
+    # 10. REASONS
     # -----------------------------------------
-
     reasons = []
 
-
-    if inventory_pressure >= 0.6:
-
+    if inventory_pressure >= 0.5:
         reasons.append(
-            "High inventory level"
+            f"Overstock: about {round(days_of_cover)} days of stock"
+            if days_of_cover < 999 else "Overstock: no recent sales"
         )
-
-
     if age_pressure >= 0.6:
-
-        reasons.append(
-            "Aging inventory"
-        )
-
-
+        reasons.append("Aging inventory")
     if demand_pressure >= 0.8:
-
-        reasons.append(
-            "Low demand"
-        )
-
-
-    if velocity_pressure >= 0.6:
-
-        reasons.append(
-            "Slow sales velocity"
-        )
-
-
+        reasons.append("Low demand")
+    if velocity_pressure >= 0.5:
+        reasons.append("Sales are slowing down")
     if expiry_pressure >= 0.5:
-
-        reasons.append(
-            "Expiry urgency"
-        )
-
-
+        reasons.append("Expiry urgency")
     if not reasons:
-
-        reasons.append(
-            "Healthy inventory conditions"
-        )
-
-
-    # -----------------------------------------
-    # 13. COST PRICE REACHED
-    # -----------------------------------------
-
-    cost_price_reached = (
-        clearance_price <= cost_price
-    )
-
-
-    # -----------------------------------------
-    # 14. FINAL RESPONSE
-    # -----------------------------------------
+        reasons.append("Healthy inventory conditions")
 
     return {
-
         "base_price": base_price,
-
         "cost_price": cost_price,
-
-        "minimum_price": product.minimum_price,
-
+        "minimum_price": minimum_price,
         "clearance_price": clearance_price,
-
         "discount_percent": actual_discount,
-
         "clearance_level": clearance_level,
-
-        "pressure_score": round(
-            pressure_score,
-            3
-        ),
-
-        "inventory_pressure": round(
-            inventory_pressure,
-            3
-        ),
-
-        "age_pressure": round(
-            age_pressure,
-            3
-        ),
-
-        "demand_pressure": round(
-            demand_pressure,
-            3
-        ),
-
-        "velocity_pressure": round(
-            velocity_pressure,
-            3
-        ),
-
-        "expiry_pressure": round(
-            expiry_pressure,
-            3
-        ),
-
-        "sales_velocity": round(
-            sales_velocity,
-            3
-        ),
-
-        "cost_price_reached": cost_price_reached,
-
+        "pressure_score": round(pressure_score, 3),
+        "inventory_pressure": round(inventory_pressure, 3),
+        "age_pressure": round(age_pressure, 3),
+        "demand_pressure": round(demand_pressure, 3),
+        "velocity_pressure": round(velocity_pressure, 3),
+        "expiry_pressure": round(expiry_pressure, 3),
+        "sales_velocity": round(sales_velocity, 3),
+        "days_of_cover": round(days_of_cover, 1),
+        "cost_price_reached": clearance_price <= cost_price,
         "reasons": reasons
     }

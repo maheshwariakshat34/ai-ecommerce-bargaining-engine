@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
 
-from backend.models.product import Product
+from backend.models.product import Product, db
 
 from backend.services.clearance_engine import (
     calculate_clearance_price
@@ -20,7 +20,7 @@ clearance_bp = Blueprint(
 def get_clearance_price(product_id):
 
     # Find product
-    product = Product.query.get(product_id)
+    product = db.session.get(Product, product_id)
 
     # Product not found
     if not product:

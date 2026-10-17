@@ -26,4 +26,4 @@ jobs:
           pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m compileall -q backend
+        run: python -m compile all -q backend

@@ -17,5 +17,4 @@ An AI-powered e-commerce platform that enables customers to negotiate product pr
 - HTML
 - CSS
 - JavaScript
-- Scikit-learn
 - GitHub Actions

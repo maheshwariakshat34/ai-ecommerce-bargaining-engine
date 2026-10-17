@@ -1,120 +1,169 @@
-from flask import Blueprint, jsonify, request
+import math
 
-from backend.models.product import Product
-from backend.models.product import db
+from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
+
+from backend.models.product import Product, db
 
 
 product_bp = Blueprint("product", __name__)
 
+VALID_DEMAND = {"LOW", "MEDIUM", "HIGH"}
+
+
+def _num(value, name, minimum=0):
+    """Convert to a finite float >= minimum, or raise ValueError."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a number.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number.")
+    if not math.isfinite(number) or number < minimum:
+        raise ValueError(f"{name} must be a valid number >= {minimum}.")
+    return number
+
+
+def _int(value, name, minimum=0):
+    number = _num(value, name, minimum)
+    if number != int(number):
+        raise ValueError(f"{name} must be a whole number.")
+    return int(number)
+
+
+def validate_product_data(d):
+    """Validate a full set of product fields (already merged for PUT)."""
+    clean = {}
+    clean["name"] = str(d.get("name") or "").strip()
+    clean["category"] = str(d.get("category") or "").strip()
+    if not clean["name"] or not clean["category"]:
+        raise ValueError("name and category are required.")
+
+    clean["base_price"] = _num(d.get("base_price"), "base_price", 0.01)
+    clean["cost_price"] = _num(d.get("cost_price"), "cost_price", 0)
+    clean["minimum_price"] = _num(d.get("minimum_price"), "minimum_price", 0)
+
+    # Business rule: cost <= minimum <= base
+    if not (clean["cost_price"] <= clean["minimum_price"] <= clean["base_price"]):
+        raise ValueError(
+            "Prices must satisfy: cost_price <= minimum_price <= base_price."
+        )
+
+    clean["stock"] = _int(d.get("stock"), "stock", 0)
+    clean["inventory_age"] = _int(d.get("inventory_age", 0), "inventory_age", 0)
+    clean["sales_last_7_days"] = _int(
+        d.get("sales_last_7_days", 0), "sales_last_7_days", 0
+    )
+    clean["sales_last_30_days"] = _int(
+        d.get("sales_last_30_days", 0), "sales_last_30_days", 0
+    )
+
+    expiry = d.get("days_to_expiry")
+    clean["days_to_expiry"] = (
+        None if expiry is None else _int(expiry, "days_to_expiry", -10**6)
+    )
+
+    demand = str(d.get("demand_level") or "MEDIUM").upper()
+    if demand not in VALID_DEMAND:
+        raise ValueError("demand_level must be LOW, MEDIUM or HIGH.")
+    clean["demand_level"] = demand
+
+    clean["seasonal_factor"] = _num(
+        d.get("seasonal_factor", 0), "seasonal_factor", -10**6
+    )
+    return clean
+
 
 @product_bp.route("/api/products", methods=["GET"])
 def get_products():
-
     products = Product.query.all()
-
-    return jsonify([
-        product.to_dict()
-        for product in products
-    ])
+    return jsonify([p.to_dict() for p in products])
 
 
 @product_bp.route("/api/products", methods=["POST"])
 def add_product():
+    data = request.get_json(silent=True)  # FIX: None body no longer crashes
 
-    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"message": "Request body must be valid JSON."}), 400
 
-    product = Product(
-        name=data["name"],
-        category=data["category"],
-        base_price=data["base_price"],
-        cost_price=data["cost_price"],
-        minimum_price=data["minimum_price"],
-        stock=data["stock"],
-        inventory_age=data.get("inventory_age", 0),
-        days_to_expiry=data.get("days_to_expiry"),
-        sales_last_7_days = data.get("sales_last_7_days", 0),
-        sales_last_30_days = data.get("sales_last_30_days", 0),
-        demand_level = data.get("demand_level", "MEDIUM"),
-        seasonal_factor = data.get("seasonal_factor", 0)
-    )
+    try:
+        clean = validate_product_data(data)
+    except ValueError as error:
+        return jsonify({"message": str(error)}), 400
 
-    db.session.add(product)
-    db.session.commit()
+    product = Product(**clean)
+
+    try:
+        db.session.add(product)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Could not save product."}), 500
 
     return jsonify({
         "message": "Product added successfully",
         "product": product.to_dict()
     }), 201
 
+
 @product_bp.route("/api/products/<int:product_id>", methods=["PUT"])
 def update_product(product_id):
-
-    product = Product.query.get(product_id)
+    product = db.session.get(Product, product_id)
 
     if not product:
-        return jsonify({
-            "message": "Product not found"
-        }), 404
+        return jsonify({"message": "Product not found"}), 404
 
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
-    product.name = data.get("name", product.name)
-    product.category = data.get("category", product.category)
-    product.base_price = data.get("base_price", product.base_price)
-    product.cost_price = data.get("cost_price", product.cost_price)
-    product.minimum_price = data.get(
-        "minimum_price",
-        product.minimum_price
-    )
-    product.stock = data.get("stock", product.stock)
-    product.inventory_age = data.get(
-        "inventory_age",
-        product.inventory_age
-    )
-    product.days_to_expiry = data.get(
-        "days_to_expiry",
-        product.days_to_expiry
-    )
-    product.sales_last_7_days = data.get(
-        "sales_last_7_days",
-        product.sales_last_7_days
-    )
+    if not isinstance(data, dict):
+        return jsonify({"message": "Request body must be valid JSON."}), 400
 
-    product.sales_last_30_days = data.get(
-        "sales_last_30_days",
-        product.sales_last_30_days
-    )
+    fields = [
+        "name", "category", "base_price", "cost_price", "minimum_price",
+        "stock", "inventory_age", "days_to_expiry", "sales_last_7_days",
+        "sales_last_30_days", "demand_level", "seasonal_factor"
+    ]
 
-    product.demand_level = data.get(
-        "demand_level",
-        product.demand_level
-    )
+    # Merge existing values with updates, then validate the final result
+    merged = {f: getattr(product, f) for f in fields}
+    merged.update({f: data[f] for f in fields if f in data})
 
-    product.seasonal_factor = data.get(
-        "seasonal_factor",
-        product.seasonal_factor
-    )
+    try:
+        clean = validate_product_data(merged)
+    except ValueError as error:
+        return jsonify({"message": str(error)}), 400
 
-    db.session.commit()
+    for key, value in clean.items():
+        setattr(product, key, value)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Could not update product."}), 500
 
     return jsonify({
         "message": "Product updated successfully",
         "product": product.to_dict()
     })
 
+
 @product_bp.route("/api/products/<int:product_id>", methods=["DELETE"])
 def delete_product(product_id):
-
-    product = Product.query.get(product_id)
+    product = db.session.get(Product, product_id)
 
     if not product:
+        return jsonify({"message": "Product not found"}), 404
+
+    try:
+        db.session.delete(product)
+        db.session.commit()
+    except IntegrityError:
+        # FIX: product still referenced by bargaining sessions / offers
+        db.session.rollback()
         return jsonify({
-            "message": "Product not found"
-        }), 404
+            "message": "Cannot delete product: it has bargaining sessions or offers."
+        }), 409
 
-    db.session.delete(product)
-    db.session.commit()
-
-    return jsonify({
-        "message": "Product deleted successfully"
-    })
+    return jsonify({"message": "Product deleted successfully"})

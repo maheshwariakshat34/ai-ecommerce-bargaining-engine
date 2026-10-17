@@ -5,6 +5,15 @@ class Offer(db.Model):
 
     __tablename__ = "offers"
 
+    # One offer per round per session
+    __table_args__ = (
+        db.UniqueConstraint(
+            "session_id",
+            "round_number",
+            name="uq_offer_session_round"
+        ),
+    )
+
     id = db.Column(
         db.Integer,
         primary_key=True

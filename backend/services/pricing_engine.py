@@ -81,5 +81,5 @@ def calculate_pricing(product, quantity):
         "pressure_score": clearance["pressure_score"],
         "clearance_reasons": clearance["reasons"],
 
-        "cost_price_reached": final_bulk_price <= cost_total
+        "cost_price_reached": round(final_bulk_price, 2) <= round(cost_total, 2)
     }
