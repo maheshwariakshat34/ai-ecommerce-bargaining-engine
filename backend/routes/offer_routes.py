@@ -11,6 +11,7 @@ from backend.services.bargaining_service import (
     get_last_counter,
 )
 from backend.services.ai_negotiator import understand_message, write_reply
+from backend.services.security import is_admin
 
 
 offer_bp = Blueprint("offer_bp", __name__)
@@ -97,6 +98,11 @@ def submit_offer():
         }), 400
 
     payload, status = process_offer(session_id, customer_offer)
+
+    # Customers must never see cost, floor or target price
+    if not is_admin():
+        payload.pop("pricing", None)
+
     return jsonify(payload), status
 
 
@@ -132,7 +138,6 @@ def bargaining_chat():
 
     # 1. NLP: understand the customer message
     parsed = understand_message(message)
-    language = parsed["language"]
 
     base_ctx = {
         "product_name": product.name,
@@ -145,7 +150,7 @@ def bargaining_chat():
     if session.status != "ACTIVE":
         ctx = {**base_ctx, "type": "SESSION_ENDED"}
         return jsonify({
-            "reply": write_reply(ctx, language),
+            "reply": write_reply(ctx, message),
             "session_status": session.status,
             "final_price": session.final_price,
             "understood": parsed
@@ -167,7 +172,7 @@ def bargaining_chat():
         if customer_offer is None:
             ctx = {**base_ctx, "type": "NO_COUNTER"}
             return jsonify({
-                "reply": write_reply(ctx, language),
+                "reply": write_reply(ctx, message),
                 "session_status": session.status,
                 "understood": parsed
             }), 200
@@ -177,13 +182,13 @@ def bargaining_chat():
         try:
             asking_price = calculate_pricing(
                 product, session.quantity
-            )["bulk_price"]
+            )["clearance_total"]
         except (ValueError, TypeError, AttributeError):
             asking_price = product.base_price * session.quantity
 
         ctx = {**base_ctx, "type": "INFO", "asking_price": asking_price}
         return jsonify({
-            "reply": write_reply(ctx, language),
+            "reply": write_reply(ctx, message),
             "session_status": session.status,
             "understood": parsed
         }), 200
@@ -210,7 +215,7 @@ def bargaining_chat():
     }
 
     return jsonify({
-        "reply": write_reply(ctx, language),
+        "reply": write_reply(ctx, message),
         "decision": result["decision"],
         "customer_offer": result["customer_offer"],
         "counter_price": result["counter_price"],
@@ -220,6 +225,25 @@ def bargaining_chat():
         "session_status": result["session_status"],
         "understood": parsed
     }), 200
+
+
+def _session_product(product):
+    if not product:
+        return None
+
+    data = {
+        "id": product.id,
+        "name": product.name,
+        "base_price": product.base_price,
+        "stock": product.stock
+    }
+
+    # Cost and minimum price: admin only
+    if is_admin():
+        data["cost_price"] = product.cost_price
+        data["minimum_price"] = product.minimum_price
+
+    return data
 
 
 # --------------------------------------------------
@@ -253,13 +277,6 @@ def get_bargaining_session(session_id):
 
     return jsonify({
         "session": session.to_dict(),
-        "product": {
-            "id": product.id,
-            "name": product.name,
-            "base_price": product.base_price,
-            "cost_price": product.cost_price,
-            "minimum_price": product.minimum_price,
-            "stock": product.stock
-        } if product else None,
+        "product": _session_product(product),
         "bargaining_history": history
     }), 200

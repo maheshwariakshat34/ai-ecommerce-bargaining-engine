@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import IntegrityError
 
 from backend.models.product import Product, db
+from backend.services.security import admin_required, is_admin
 
 
 product_bp = Blueprint("product", __name__)
@@ -74,13 +75,29 @@ def validate_product_data(d):
     return clean
 
 
+def public_product(p):
+    """What a customer may see. No cost, minimum price or sales data."""
+    return {
+        "id": p.id,
+        "name": p.name,
+        "category": p.category,
+        "base_price": p.base_price,
+        "stock": p.stock
+    }
+
+
 @product_bp.route("/api/products", methods=["GET"])
 def get_products():
     products = Product.query.all()
-    return jsonify([p.to_dict() for p in products])
+
+    if is_admin():
+        return jsonify([p.to_dict() for p in products])
+
+    return jsonify([public_product(p) for p in products])
 
 
 @product_bp.route("/api/products", methods=["POST"])
+@admin_required
 def add_product():
     data = request.get_json(silent=True)  # FIX: None body no longer crashes
 
@@ -108,6 +125,7 @@ def add_product():
 
 
 @product_bp.route("/api/products/<int:product_id>", methods=["PUT"])
+@admin_required
 def update_product(product_id):
     product = db.session.get(Product, product_id)
 
@@ -150,6 +168,7 @@ def update_product(product_id):
 
 
 @product_bp.route("/api/products/<int:product_id>", methods=["DELETE"])
+@admin_required
 def delete_product(product_id):
     product = db.session.get(Product, product_id)
 

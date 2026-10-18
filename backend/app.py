@@ -12,6 +12,8 @@ from backend.routes.offer_routes import offer_bp
 from backend.routes.clearance_routes import clearance_bp
 
 
+
+
 def create_app():
 
     app = Flask(__name__)
