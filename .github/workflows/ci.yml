@@ -1,11 +1,16 @@
 
 name: Backend CI
 
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - feature/intelligent-bargaining
+
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   check-backend:
