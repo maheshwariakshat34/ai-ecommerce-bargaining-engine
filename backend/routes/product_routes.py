@@ -59,6 +59,9 @@ def validate_product_data(d):
         d.get("sales_last_30_days", 0), "sales_last_30_days", 0
     )
 
+    if clean["sales_last_7_days"] > clean["sales_last_30_days"]:
+        raise ValueError("sales_last_7_days cannot be greater than sales_last_30_days.")
+
     expiry = d.get("days_to_expiry")
     clean["days_to_expiry"] = (
         None if expiry is None else _int(expiry, "days_to_expiry", -10**6)

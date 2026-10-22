@@ -10,6 +10,10 @@ from backend.models.bargaining_session import BargainingSession
 from backend.models.offer import Offer
 from backend.services.pricing_engine import calculate_pricing
 
+# In clearance mode the floor is the cost price. Keep a small margin above it
+# so that a final-round deal never happens at exactly zero profit.
+SAFETY_MARGIN = 0.02
+
 
 def get_last_counter(session_id):
     """Return the seller's most recent counter price in this session, or None."""
@@ -49,6 +53,9 @@ def process_offer(session_id, customer_offer):
             "error": "Product associated with this session was not found."
         }, 404
 
+    if product.days_to_expiry is not None and product.days_to_expiry <= 0:
+        return {"error": "This product has expired and cannot be sold."}, 400
+
     quantity = session.quantity
     current_round = session.current_round
 
@@ -72,7 +79,8 @@ def process_offer(session_id, customer_offer):
     normal_minimum_total = float(pricing["normal_minimum_total"])
 
     if clearance_total < normal_minimum_total:
-        negotiation_floor = cost_total
+        # clearance mode: floor is cost plus a small margin (never above the list price)
+        negotiation_floor = min(cost_total * (1 + SAFETY_MARGIN), clearance_total)
     else:
         negotiation_floor = max(cost_total, normal_minimum_total)
 
@@ -112,16 +120,11 @@ def process_offer(session_id, customer_offer):
     elif customer_offer >= target_price * 0.80:
         decision = "COUNTER"
 
-        counter_price = max(
-            negotiation_floor,
-            (customer_offer + target_price) / 2
-        )
-        counter_price = min(counter_price, target_price)
-
-        if previous_counter is not None:
-            counter_price = min(counter_price, previous_counter)
-
-        counter_price = round(counter_price, 2)
+        # Start from the seller's last price (target first, then the previous counter)
+        # so the seller moves towards the customer every round.
+        reference = previous_counter if previous_counter is not None else target_price
+        counter_price = max(negotiation_floor, (customer_offer + reference) / 2)
+        counter_price = round(min(counter_price, reference), 2)
         message = (
             f"Seller counter-offered at {counter_price:.2f}. "
             f"You may submit another offer."
@@ -149,10 +152,22 @@ def process_offer(session_id, customer_offer):
         session.status = "ACCEPTED"
         session.final_price = final_price
 
-        # Deal done: reduce stock and record the sale
-        product.stock = (product.stock or 0) - quantity
-        product.sales_last_7_days = (product.sales_last_7_days or 0) + quantity
-        product.sales_last_30_days = (product.sales_last_30_days or 0) + quantity
+        # Deal done: reduce stock and record the sale in ONE atomic update,
+        # so two simultaneous deals can never sell the same last units.
+        updated = Product.query.filter(
+            Product.id == product.id,
+            Product.stock >= quantity
+        ).update({
+            Product.stock: Product.stock - quantity,
+            Product.sales_last_7_days: Product.sales_last_7_days + quantity,
+            Product.sales_last_30_days: Product.sales_last_30_days + quantity,
+        }, synchronize_session=False)
+
+        if updated == 0:
+            db.session.rollback()
+            return {
+                "error": "Stock changed while the deal was being made. Please try again."
+            }, 409
 
     elif is_final_round:
         session.status = "CLOSED"

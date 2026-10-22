@@ -54,6 +54,9 @@ def start_bargaining():
             "available_stock": available_stock
         }), 400
 
+    if product.days_to_expiry is not None and product.days_to_expiry <= 0:
+        return jsonify({"error": "This product has expired and cannot be sold."}), 400
+
     session = BargainingSession(
         product_id=product.id,
         quantity=quantity,
