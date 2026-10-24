@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from backend.models.product import Product, db
 from backend.services.security import admin_required, is_admin
+from backend.services.clearance_engine import calculate_clearance_price
 
 
 product_bp = Blueprint("product", __name__)
@@ -80,11 +81,16 @@ def validate_product_data(d):
 
 def public_product(p):
     """What a customer may see. No cost, minimum price or sales data."""
+    clearance = calculate_clearance_price(p)
+
     return {
         "id": p.id,
         "name": p.name,
         "category": p.category,
         "base_price": p.base_price,
+        # current selling price per item (after any clearance discount)
+        "price": clearance["clearance_price"],
+        "discount_percent": clearance["discount_percent"],
         "stock": p.stock
     }
 
@@ -96,7 +102,13 @@ def get_products():
     if is_admin():
         return jsonify([p.to_dict() for p in products])
 
-    return jsonify([public_product(p) for p in products])
+    # Customers do not see expired products
+    visible = [
+        item for item in products
+        if item.days_to_expiry is None or item.days_to_expiry > 0
+    ]
+
+    return jsonify([public_product(item) for item in visible])
 
 
 @product_bp.route("/api/products", methods=["POST"])
