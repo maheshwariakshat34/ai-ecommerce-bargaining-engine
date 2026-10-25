@@ -1,10 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartShop | AI Bargaining &amp; Smart Clearance</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-$END$
+
+<header class="navbar">
+    <a href="#" class="brand" data-nav="home">
+        <span class="brand-icon">🛒</span>
+        SmartShop
+    </a>
+
+    <nav id="mainNav">
+        <a href="#" data-nav="home" class="active">Home</a>
+        <a href="#products" data-nav="products">Products</a>
+        <a href="#products" data-nav="clearance">Clearance</a>
+        <a href="#assistant" data-nav="bargain">Bargain</a>
+        <a href="#" data-nav="orders">My Orders</a>
+    </nav>
+
+    <label class="search">
+        <span>🔍</span>
+        <input type="search" id="searchInput" placeholder="Search for products...">
+    </label>
+
+    <div class="nav-right">
+        <button class="icon-btn" id="bellBtn" type="button">🔔</button>
+
+        <!-- name of the logged in user, filled by common.js -->
+        <div class="user" id="userMenu">
+            <button class="user-chip" id="userBtn" type="button">
+                <span class="avatar" id="userAvatar">G</span>
+                <span class="user-name" id="userName">Guest</span>
+                <span>▾</span>
+            </button>
+
+            <div class="user-dropdown" id="userDropdown" hidden>
+                <p class="user-line" id="userLine"></p>
+                <button type="button" id="ordersBtn">My Orders</button>
+                <button type="button" id="authBtn"></button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<div class="layout">
+
+    <main>
+        <section class="hero">
+            <div class="hero-text">
+                <p class="hero-kicker">Smarter Shopping. Better Deals.</p>
+                <h1>AI-Powered Bargaining<br>&amp; Dynamic Clearance</h1>
+                <p class="hero-sub">
+                    Get the best prices through intelligent bargaining
+                    and discover exclusive clearance deals!
+                </p>
+                <button class="hero-btn" id="heroBtn" type="button">Start Bargaining →</button>
+            </div>
+
+            <div class="hero-art">
+                <span class="hero-bubble">Let's bargain!</span>
+                <div class="hero-emoji">🛒🤖</div>
+            </div>
+        </section>
+
+        <section class="products-section" id="products">
+            <div class="section-head">
+                <h2 id="sectionTitle">Featured Products</h2>
+                <button class="link-btn" id="viewAllBtn" type="button">View All ›</button>
+            </div>
+
+            <div class="product-grid" id="productGrid"></div>
+
+            <p class="empty-message" id="emptyMessage" hidden>
+                No products found. Try another search.
+            </p>
+        </section>
+
+        <section class="feature-strip">
+            <div class="feature">
+                <span class="feature-icon">💬</span>
+                <strong>Intelligent Bargaining</strong>
+                <small>AI helps you get the best price</small>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🏷️</span>
+                <strong>Dynamic Clearance</strong>
+                <small>Stock, demand &amp; more based</small>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">⚡</span>
+                <strong>Instant Decisions</strong>
+                <small>Offers answered in seconds</small>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">🛡️</span>
+                <strong>Fair Deals</strong>
+                <small>Up to 3 rounds per product</small>
+            </div>
+        </section>
+    </main>
+
+    <aside class="sidebar">
+
+        <!-- helper assistant, the real bargaining is on bargain.html -->
+        <section class="assistant" id="assistant">
+            <div class="assistant-head">
+                <span class="bot-avatar">🤖</span>
+                <div class="assistant-title">
+                    <strong>AI Bargaining Assistant</strong>
+                    <span class="status" id="statusLine"><i class="dot"></i> <span id="statusText">Online</span></span>
+                </div>
+            </div>
+
+            <div class="chat-log" id="chatLog"></div>
+
+            <form class="chat-form" id="chatForm">
+                <input type="text" id="messageInput" maxlength="300"
+                       autocomplete="off" placeholder="Type your message...">
+                <button type="submit" id="sendBtn">➤</button>
+            </form>
+        </section>
+
+        <section class="clearance-panel">
+            <div class="section-head">
+                <h3>🔥 Clearance Deals</h3>
+                <button class="link-btn" id="clearanceAllBtn" type="button">View All ›</button>
+            </div>
+            <div class="clearance-list" id="clearanceList"></div>
+        </section>
+    </aside>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
