@@ -1,10 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartShop | Bargain</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="bargain.css">
 </head>
 <body>
-$END$
+
+<header class="navbar">
+    <a href="index.html" class="brand">
+        <span class="brand-icon">🛒</span>
+        SmartShop
+    </a>
+
+    <nav id="mainNav">
+        <a href="index.html">Home</a>
+        <a href="index.html?view=all">Products</a>
+        <a href="index.html?view=clearance">Clearance</a>
+        <a href="bargain.html" class="active">Bargain</a>
+        <a href="#" data-nav="orders">My Orders</a>
+    </nav>
+
+    <div class="nav-spacer"></div>
+
+    <div class="nav-right">
+        <button class="icon-btn" id="bellBtn" type="button">🔔</button>
+
+        <div class="user" id="userMenu">
+            <button class="user-chip" id="userBtn" type="button">
+                <span class="avatar" id="userAvatar">G</span>
+                <span class="user-name" id="userName">Guest</span>
+                <span>▾</span>
+            </button>
+
+            <div class="user-dropdown" id="userDropdown" hidden>
+                <p class="user-line" id="userLine"></p>
+                <button type="button" id="ordersBtn">My Orders</button>
+                <button type="button" id="authBtn"></button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<div class="bargain-page">
+    <a class="back-link" href="index.html">← Back to products</a>
+
+    <div class="bargain-layout">
+
+        <section class="card b-product" id="productCard">
+            <p class="b-loading">Loading product…</p>
+        </section>
+
+        <section class="assistant b-chat" id="assistant">
+            <div class="assistant-head">
+                <span class="bot-avatar">🤖</span>
+                <div class="assistant-title">
+                    <strong>AI Bargaining Assistant</strong>
+                    <span class="status" id="statusLine"><i class="dot"></i> <span id="statusText">Online</span></span>
+                </div>
+                <span class="round-pill" id="roundPill" hidden></span>
+            </div>
+
+            <div class="chat-log" id="chatLog"></div>
+
+            <div class="accept-bar" id="acceptBar" hidden>
+                <span id="acceptText"></span>
+                <button type="button" id="acceptBtn">Accept this price</button>
+            </div>
+
+            <form class="chat-form" id="chatForm">
+                <input type="text" id="messageInput" maxlength="300"
+                       autocomplete="off" placeholder="Start bargaining first...">
+                <button type="submit" id="sendBtn">➤</button>
+            </form>
+        </section>
+
+        <section class="card b-rounds">
+            <h2>Negotiation so far</h2>
+            <ol class="rounds-list" id="roundsList"></ol>
+            <p class="rounds-empty">Your offers and the seller's replies will show up here.</p>
+            <p class="b-tip">
+                Tip: type your price per item, in any language. If you buy more
+                than one, the seller's prices are for the whole order.
+            </p>
+        </section>
+
+    </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="bargain.js"></script>
 </body>
 </html>
