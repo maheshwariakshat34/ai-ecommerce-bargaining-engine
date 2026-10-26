@@ -19,19 +19,35 @@ let rounds = [];          // offers and replies shown on the left
 
 // ---------- chat messages ----------
 
+// scrolls to the newest message; repeats once the browser has laid out
+// cards and images, otherwise the bottom of a tall message stays hidden
+function scrollChatToEnd() {
+    chatLog.scrollTop = chatLog.scrollHeight;
+    requestAnimationFrame(function () {
+        chatLog.scrollTop = chatLog.scrollHeight;
+    });
+    setTimeout(function () {
+        chatLog.scrollTop = chatLog.scrollHeight;
+    }, 150);
+}
+
+// text can be empty when the message is only a card
 function addMessage(kind, text, extra) {
     const box = document.createElement("div");
-    const bubble = document.createElement("div");
 
     box.className = "msg " + kind;
-    bubble.className = "bubble";
-    bubble.textContent = text;   // textContent so reply text can never run as html
-    box.appendChild(bubble);
+
+    if (text) {
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = text;   // textContent so reply text can never run as html
+        box.appendChild(bubble);
+    }
 
     if (extra) box.appendChild(extra);
 
     chatLog.appendChild(box);
-    chatLog.scrollTop = chatLog.scrollHeight;
+    scrollChatToEnd();
     return box;
 }
 
@@ -220,7 +236,7 @@ function dealDone(total) {
 
     card.appendChild(makeLink("Continue shopping"));
 
-    addMessage("assistant", "Thank you for bargaining with me!", card);
+    addMessage("assistant", "", card);
     updateInput();
 }
 
@@ -368,7 +384,15 @@ async function acceptCounter() {
         if (!result.ok) {
             addMessage("system", result.data.error || "Could not accept. Please try again.");
         } else {
-            handleReply(result.data);
+            const data = result.data;
+
+            // /offer only returns a technical message, so write a friendly one here
+            if (data.decision === "ACCEPT") {
+                data.reply = "Deal! " + product.name + " is yours at " +
+                    formatPrice(data.final_price) + ". Thank you!";
+            }
+
+            handleReply(data);
         }
     } catch (error) {
         addMessage("system", "Could not reach the server. Please try again.");

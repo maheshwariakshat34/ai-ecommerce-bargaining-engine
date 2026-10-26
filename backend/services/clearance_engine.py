@@ -10,6 +10,8 @@ Rules:
 6. Price never goes below cost_price and never above base_price.
 """
 
+import math
+
 MAX_DISCOUNT_PERCENT = 50      # hard cap on clearance discount
 CLEARANCE_THRESHOLD = 0.20     # below this pressure -> no discount
 
@@ -23,6 +25,12 @@ EXPIRY_FORCE_PRESSURE = 0.80
 
 def _clamp(value, low=0.0, high=1.0):
     return max(low, min(value, high))
+
+
+def _round_price(value):
+    """Round UP to a clean shop price: whole rupee under Rs 100, else next Rs 5."""
+    step = 1 if value < 100 else 5
+    return math.ceil(round(value, 2) / step) * step
 
 
 def calculate_clearance_price(product):
@@ -131,7 +139,7 @@ def calculate_clearance_price(product):
     # 8. COST PROTECTION (never below cost, never above base)
     # -----------------------------------------
     clearance_price = round(
-        min(max(calculated_price, cost_price), base_price), 2
+        min(max(_round_price(calculated_price), cost_price), base_price), 2
     )
 
     actual_discount = (

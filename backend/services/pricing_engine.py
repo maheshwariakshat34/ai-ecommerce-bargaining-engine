@@ -1,3 +1,5 @@
+import math
+
 from backend.services.clearance_engine import calculate_clearance_price
 
 
@@ -40,7 +42,7 @@ def calculate_pricing(product, quantity):
 
     # Protect the seller's total product cost.
     final_bulk_price = max(
-        bulk["discounted_total"],
+        math.ceil(bulk["discounted_total"]),
         cost_total
     )
 

@@ -3,6 +3,8 @@ Core bargaining logic, shared by /api/bargaining/offer and /api/bargaining/chat.
 The rule engine (not the AI) decides every price.
 """
 
+import math
+
 from sqlalchemy.exc import IntegrityError
 
 from backend.models.product import Product, db
@@ -13,6 +15,12 @@ from backend.services.pricing_engine import calculate_pricing
 # In clearance mode the floor is the cost price. Keep a small margin above it
 # so that a final-round deal never happens at exactly zero profit.
 SAFETY_MARGIN = 0.02
+
+# Final round: the customer must cover this share of the gap between the
+# negotiation floor and the seller's last price (last counter, or target if
+# there was none). 0 = accept anything above the floor (old behaviour),
+# 1 = the customer must meet the seller's last price.
+FINAL_ROUND_ACCEPT_SHARE = 0.5
 
 
 def get_last_counter(session_id):
@@ -96,13 +104,21 @@ def process_offer(session_id, customer_offer):
 
     is_final_round = current_round >= session.max_rounds
 
+    # Seller's last stated price, and the lowest offer we take in the final round
+    last_price = previous_counter if previous_counter is not None else target_price
+    last_price = max(last_price, negotiation_floor)
+    final_round_min = round(
+        negotiation_floor
+        + FINAL_ROUND_ACCEPT_SHARE * (last_price - negotiation_floor), 2
+    )
+
     accept_price = None
 
     if customer_offer >= target_price:
         accept_price = target_price
     elif previous_counter is not None and customer_offer >= previous_counter:
         accept_price = previous_counter
-    elif is_final_round and customer_offer >= negotiation_floor:
+    elif is_final_round and customer_offer >= final_round_min:
         accept_price = customer_offer
 
     if accept_price is not None:
@@ -114,7 +130,7 @@ def process_offer(session_id, customer_offer):
         decision = "REJECT"
         message = (
             "Final offer rejected because it is below "
-            "the minimum permitted price."
+            "the lowest price the seller can accept."
         )
 
     elif customer_offer >= target_price * 0.80:
@@ -124,6 +140,8 @@ def process_offer(session_id, customer_offer):
         # so the seller moves towards the customer every round.
         reference = previous_counter if previous_counter is not None else target_price
         counter_price = max(negotiation_floor, (customer_offer + reference) / 2)
+        # Whole rupees, rounded up, so the customer sees a clean number
+        counter_price = math.ceil(counter_price)
         counter_price = round(min(counter_price, reference), 2)
         message = (
             f"Seller counter-offered at {counter_price:.2f}. "

@@ -153,7 +153,7 @@ def bargaining_chat():
     if session.status != "ACTIVE":
         ctx = {**base_ctx, "type": "SESSION_ENDED"}
         return jsonify({
-            "reply": write_reply(ctx, message),
+            "reply": write_reply(ctx, parsed["language"]),
             "session_status": session.status,
             "final_price": session.final_price,
             "understood": parsed
@@ -175,7 +175,7 @@ def bargaining_chat():
         if customer_offer is None:
             ctx = {**base_ctx, "type": "NO_COUNTER"}
             return jsonify({
-                "reply": write_reply(ctx, message),
+                "reply": write_reply(ctx, parsed["language"]),
                 "session_status": session.status,
                 "understood": parsed
             }), 200
@@ -191,7 +191,7 @@ def bargaining_chat():
 
         ctx = {**base_ctx, "type": "INFO", "asking_price": asking_price}
         return jsonify({
-            "reply": write_reply(ctx, message),
+            "reply": write_reply(ctx, parsed["language"]),
             "session_status": session.status,
             "understood": parsed
         }), 200
@@ -218,7 +218,7 @@ def bargaining_chat():
     }
 
     return jsonify({
-        "reply": write_reply(ctx, message),
+        "reply": write_reply(ctx, parsed["language"]),
         "decision": result["decision"],
         "customer_offer": result["customer_offer"],
         "counter_price": result["counter_price"],
