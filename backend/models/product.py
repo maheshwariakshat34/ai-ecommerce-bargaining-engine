@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from flask_sqlalchemy import SQLAlchemy
 
 
@@ -8,9 +10,8 @@ class Product(db.Model):
 
     __tablename__ = "products"
 
-    # -----------------------------------------
+
     # BASIC PRODUCT INFORMATION
-    # -----------------------------------------
 
     id = db.Column(
         db.Integer,
@@ -28,9 +29,7 @@ class Product(db.Model):
     )
 
 
-    # -----------------------------------------
     # PRICING
-    # -----------------------------------------
 
     base_price = db.Column(
         db.Float,
@@ -49,9 +48,7 @@ class Product(db.Model):
     )
 
 
-    # -----------------------------------------
     # INVENTORY
-    # -----------------------------------------
 
     stock = db.Column(
         db.Integer,
@@ -65,23 +62,36 @@ class Product(db.Model):
     )
 
 
-    # -----------------------------------------
-    # EXPIRY
-    # -----------------------------------------
 
+    # EXPIRY
     # Nullable because electronics/clothing
     # may not have expiry.
+    # The real expiry date is stored. days_to_expiry (below) is worked out
+    # from it every time, so it goes down by itself day after day.
 
-    days_to_expiry = db.Column(
-        db.Integer,
+    expiry_date = db.Column(
+        db.Date,
         nullable=True
     )
 
+    @property
+    def days_to_expiry(self):
+        """Days left until expiry (0 = expires today, negative = expired)."""
+        if self.expiry_date is None:
+            return None
+        return (self.expiry_date - date.today()).days
 
-    # -----------------------------------------
-    # SALES DATA
-    # -----------------------------------------
+    @days_to_expiry.setter
+    def days_to_expiry(self, days):
+        """Old-style: days_to_expiry = 20 means 20 days from today."""
+        self.expiry_date = (
+            None if days is None
+            else date.today() + timedelta(days=int(days))
+        )
 
+
+
+   # SALES DATA
     # Number of units sold in last 7 days
 
     sales_last_7_days = db.Column(
@@ -100,9 +110,8 @@ class Product(db.Model):
     )
 
 
-    # -----------------------------------------
-    # DEMAND
-    # -----------------------------------------
+   # DEMAND
+
 
     # HIGH / MEDIUM / LOW
 
@@ -114,6 +123,19 @@ class Product(db.Model):
     seasonal_factor = db.Column(
         db.Float,
         default=0
+    )
+
+
+    # -----------------------------------------
+    # PHOTO
+    # -----------------------------------------
+
+    # A full link (https://...) or a file in the frontend folder
+    # (images/wireless-headphones.jpg). Optional.
+
+    image_url = db.Column(
+        db.String(500),
+        nullable=True
     )
 
     # -----------------------------------------
@@ -140,6 +162,11 @@ class Product(db.Model):
 
             "inventory_age": self.inventory_age,
 
+            "expiry_date": (
+                self.expiry_date.isoformat()
+                if self.expiry_date else None
+            ),
+
             "days_to_expiry": self.days_to_expiry,
 
             "sales_last_7_days": (
@@ -153,5 +180,7 @@ class Product(db.Model):
             "demand_level": (
                 self.demand_level
             ),
-            "seasonal_factor": self.seasonal_factor
+            "seasonal_factor": self.seasonal_factor,
+
+            "image_url": self.image_url
         }
