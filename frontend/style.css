@@ -9,7 +9,7 @@
     --white: #ffffff;
     --green: #17a56d;
     --green-soft: #e3f7ee;
-    --red: #ee4f58;
+    --red: red;
     --red-soft: #ffecee;
     --shadow: 0 6px 22px rgba(40, 62, 140, 0.08);
 }
@@ -304,16 +304,30 @@ main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 
 .badge {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    padding: 3px 9px;
+    top: 10px;
+    right: 10px;
+    padding: 4px 10px;
     border-radius: 999px;
-    color: #fff;
+    color: white;
     font-size: 11px;
     font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+
+
+    z-index: 10;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
-.badge.green { background: var(--green); }
-.badge.red { background: var(--red); }
+
+
+.badge.red {
+    background: #d92d20;
+}
+
+.badge.green {
+    background: var(--green);
+}
+
 
 .product-name { margin: 10px 0 4px; font-size: 14px; font-weight: 600; }
 

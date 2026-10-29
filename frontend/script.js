@@ -30,6 +30,26 @@ async function loadProducts() {
     }
 }
 
+// one product from each category first, so the home page shows a mix
+function pickFeatured() {
+    const inStock = products.filter(function (p) { return p.stock > 0; });
+    const picked = [];
+    const seen = {};
+
+    inStock.forEach(function (p) {
+        if (picked.length < 4 && !seen[p.category]) {
+            seen[p.category] = true;
+            picked.push(p);
+        }
+    });
+
+    inStock.forEach(function (p) {
+        if (picked.length < 4 && picked.indexOf(p) === -1) picked.push(p);
+    });
+
+    return picked;
+}
+
 function getVisibleProducts() {
     const text = searchInput.value.trim().toLowerCase();
 
@@ -44,7 +64,7 @@ function getVisibleProducts() {
         return products.filter(isClearance);
     }
     if (view === "featured") {
-        return products.filter(function (p) { return p.stock > 0; }).slice(0, 4);
+        return pickFeatured();
     }
     return products;
 }
@@ -87,6 +107,7 @@ function showProducts() {
         html += '<article class="product-card">' +
             '<div class="product-image">' + badgeHtml + thumbHtml(product) + "</div>" +
             '<h3 class="product-name">' + escapeHtml(product.name) + "</h3>" +
+            expiryNoteHtml(product) +
             '<div class="price-row">' + oldPrice +
             '<span class="current-price">' + formatPrice(product.price) + "</span></div>" +
             button +
@@ -115,7 +136,8 @@ function showClearance() {
             '<span class="clearance-info">' +
             '<span class="clearance-name">' + escapeHtml(product.name) + "</span>" +
             '<span class="off-pill">' + Math.round(product.discount_percent) + "% OFF</span>" +
-            '<span class="stock-left">Only ' + product.stock + " left</span>" +
+            '<span class="stock-left">Only ' + product.stock + " left" +
+            (expiryText(product) ? " · " + expiryText(product) : "") + "</span>" +
             "</span><span>›</span></button>";
     });
 
@@ -263,7 +285,7 @@ function welcome() {
 function startBargaining() {
     addMessage("user", "Start Bargaining");
 
-    const available = products.filter(function (p) { return p.stock > 0; }).slice(0, 4);
+    const available = pickFeatured();
 
     if (available.length === 0) {
         addMessage("assistant", "There are no products available right now.");
@@ -338,6 +360,5 @@ if (wantedView === "all" || wantedView === "clearance") {
     setActiveNav(wantedView === "all" ? "products" : "clearance");
 }
 
-initNavbar();
-welcome();
+initNavbar().then(welcome);   // the greeting needs to know who is logged in
 loadProducts();

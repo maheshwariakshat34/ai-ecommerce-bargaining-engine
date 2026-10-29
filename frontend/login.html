@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartShop | Log in</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="login.css">
+</head>
+<body>
+
+<header class="navbar">
+    <a href="index.html" class="brand">
+        <span class="brand-icon">🛒</span>
+        SmartShop
+    </a>
+
+    <nav id="mainNav">
+        <a href="index.html">Home</a>
+        <a href="index.html?view=all">Products</a>
+        <a href="index.html?view=clearance">Clearance</a>
+        <a href="bargain.html">Bargain</a>
+        <a href="#" data-nav="orders">My Orders</a>
+    </nav>
+
+    <div class="nav-spacer"></div>
+
+    <div class="nav-right">
+        <button class="icon-btn" id="bellBtn" type="button">🔔</button>
+
+        <div class="user" id="userMenu">
+            <button class="user-chip" id="userBtn" type="button">
+                <span class="avatar" id="userAvatar">G</span>
+                <span class="user-name" id="userName">Guest</span>
+                <span>▾</span>
+            </button>
+
+            <div class="user-dropdown" id="userDropdown" hidden>
+                <p class="user-line" id="userLine"></p>
+                <button type="button" id="ordersBtn">My Orders</button>
+                <button type="button" id="authBtn"></button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="auth-page">
+    <section class="auth-card">
+        <h1 id="authTitle">Welcome back</h1>
+        <p class="auth-sub" id="authSub"></p>
+
+        <div class="auth-tabs">
+            <button type="button" class="auth-tab on" data-role="user">Customer</button>
+            <button type="button" class="auth-tab" data-role="admin">Seller</button>
+        </div>
+
+        <form id="authForm" novalidate>
+            <label id="nameRow" hidden>Full name
+                <input id="nameInput" type="text" maxlength="60" autocomplete="name">
+            </label>
+
+            <label>Email
+                <input id="emailInput" type="email" maxlength="120" autocomplete="email">
+            </label>
+
+            <label>Password
+                <span class="auth-pw">
+                    <input id="passwordInput" type="password" maxlength="128" autocomplete="current-password">
+                    <button type="button" id="showPw" class="auth-show">Show</button>
+                </span>
+            </label>
+
+            <p class="auth-error" id="authError" role="alert"></p>
+            <button type="submit" id="authSubmit" class="auth-btn">Log in</button>
+        </form>
+
+        <p class="auth-switch" id="switchRow">
+            <span id="switchText"></span><button type="button" id="switchBtn" class="auth-link"></button>
+        </p>
+    </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="login.js"></script>
+</body>
+</html>

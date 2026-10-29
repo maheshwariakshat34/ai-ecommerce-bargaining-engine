@@ -1,7 +1,3 @@
-// bargaining page
-// bargain.html?product=1              starts a new bargaining
-// bargain.html?product=1&session=7    opens an old session again
-
 const chatLog = $("chatLog");
 const messageInput = $("messageInput");
 const sendBtn = $("sendBtn");
@@ -12,6 +8,7 @@ let quantity = 1;
 let sessionId = null;
 let maxRounds = 3;
 let lastCounter = null;   // seller's last counter price (total)
+let confirming = false;   // true when the price is agreed and only your confirmation is missing
 let finished = false;
 let busy = false;
 let rounds = [];          // offers and replies shown on the left
@@ -78,12 +75,13 @@ function showAcceptBar() {
         return;
     }
 
-    let text = "Seller's price: " + formatPrice(lastCounter);
+    let text = (confirming ? "Confirm the deal at " : "Seller's price: ") + formatPrice(lastCounter);
     if (quantity > 1) {
         text += " total (" + formatPrice(lastCounter / quantity) + " each)";
     }
 
     $("acceptText").textContent = text;
+    $("acceptBtn").textContent = confirming ? "Confirm deal" : "Accept this price";
     $("acceptBar").hidden = false;
 }
 
@@ -147,6 +145,14 @@ function showProduct() {
     }
 }
 
+// the login ran out in the middle of bargaining
+function loginExpired() {
+    const link = document.createElement("a");
+    link.href = loginUrl();
+    link.textContent = "Log in again";
+    addMessage("system", "Your login has expired.", link);
+}
+
 function showProblem(html) {
     $("productCard").innerHTML = '<p class="b-error">' + html + "</p>";
 }
@@ -175,6 +181,10 @@ function showRounds() {
         if (round.decision === "COUNTER") {
             result.className = "decision counter";
             result.textContent = "Seller countered " + formatPrice(round.counter);
+        } else if (round.decision === "CONFIRM") {
+            result.className = "decision counter";
+            result.textContent = "Seller agreed to " + formatPrice(round.counter) +
+                " (waiting for your confirmation)";
         } else if (round.decision === "ACCEPT") {
             result.className = "decision accept";
             result.textContent = "Deal at " + formatPrice(round.final);
@@ -255,19 +265,37 @@ function handleReply(data) {
     if (text) addMessage("assistant", text);
 
     if (data.decision) {
-        rounds.push({
-            number: data.round_number,
-            offer: data.customer_offer,
-            decision: data.decision,
-            counter: data.counter_price,
-            final: data.final_price
-        });
+        // confirming a price updates the round that held it, it is not a new round
+        const held = data.confirmed
+            ? rounds.filter(function (r) { return r.number === data.round_number; })[0]
+            : null;
+
+        if (held) {
+            held.decision = "ACCEPT";
+            held.final = data.final_price;
+        } else {
+            rounds.push({
+                number: data.round_number,
+                offer: data.customer_offer,
+                decision: data.decision,
+                counter: data.counter_price,
+                final: data.final_price
+            });
+        }
+
         showRounds();
         showRoundPill();
     }
 
-    if (data.decision === "COUNTER") {
+    if (data.decision === "COUNTER" || data.decision === "CONFIRM") {
         lastCounter = data.counter_price;
+        confirming = data.decision === "CONFIRM";
+    }
+
+    // the customer said "ok": the same price is shown again, waiting for the button
+    if (data.awaiting_confirmation && data.pending_price !== null && data.pending_price !== undefined) {
+        lastCounter = data.pending_price;
+        confirming = true;
     }
 
     if (data.session_status === "ACCEPTED") {
@@ -298,6 +326,11 @@ async function startSession() {
             product_id: product.id,
             quantity: wanted
         });
+
+        if (result.status === 401) {
+            window.location.assign(loginUrl());
+            return;
+        }
 
         if (!result.ok) {
             $("setupError").textContent = result.data.error || "Could not start bargaining. Please try again.";
@@ -348,7 +381,9 @@ async function sendMessage(text) {
         typing.remove();
 
         if (!result.ok) {
-            if (result.status === 429) {
+            if (result.status === 401) {
+                loginExpired();
+            } else if (result.status === 429) {
                 addMessage("system", "You are sending messages too fast. Please wait a moment.");
             } else {
                 addMessage("system", result.data.error || "Something went wrong. Please try again.");
@@ -367,30 +402,29 @@ async function sendMessage(text) {
     if (!finished) messageInput.focus();
 }
 
-// the rule engine accepts any offer that is at least its own last counter price
+// pressing the button confirms the seller's last price.
+// This is the ONLY place where a deal is made; chat messages never make one.
 async function acceptCounter() {
     if (lastCounter === null || busy || finished) return;
 
     busy = true;
     updateInput();
-    addMessage("user", "I accept " + formatPrice(lastCounter) + ".");
+    addMessage("user", (confirming ? "I confirm " : "I accept ") + formatPrice(lastCounter) + ".");
 
     try {
-        const result = await post("/api/bargaining/offer", {
-            session_id: sessionId,
-            customer_offer: lastCounter
+        const result = await post("/api/bargaining/confirm", {
+            session_id: sessionId
         });
 
-        if (!result.ok) {
-            addMessage("system", result.data.error || "Could not accept. Please try again.");
+        if (result.status === 401) {
+            loginExpired();
+        } else if (!result.ok) {
+            addMessage("system", result.data.error || "Could not confirm the deal. Please try again.");
         } else {
             const data = result.data;
 
-            // /offer only returns a technical message, so write a friendly one here
-            if (data.decision === "ACCEPT") {
-                data.reply = "Deal! " + product.name + " is yours at " +
-                    formatPrice(data.final_price) + ". Thank you!";
-            }
+            data.reply = "Deal! " + product.name + " is yours at " +
+                formatPrice(data.final_price) + ". Thank you!";
 
             handleReply(data);
         }
@@ -494,12 +528,19 @@ async function openOldSession(id, allProducts) {
 // ---------- start ----------
 
 async function start() {
-    initNavbar();
+    await initNavbar();
     updateInput();
 
     const params = new URLSearchParams(window.location.search);
     const productId = parseInt(params.get("product"), 10);
     const oldSession = parseInt(params.get("session"), 10);
+
+    // the shop asks for a login before bargaining
+    if (loginRequired && currentUser.guest) {
+        showProblem('Please <a href="' + loginUrl() + '">log in</a> to bargain. ' +
+            '<a href="index.html">Back to products</a>');
+        return;
+    }
 
     let allProducts = [];
 
