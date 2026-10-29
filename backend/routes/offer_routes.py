@@ -8,10 +8,11 @@ from backend.models.offer import Offer
 from backend.services.pricing_engine import calculate_pricing
 from backend.services.bargaining_service import (
     process_offer,
+    confirm_deal,
     get_last_counter,
 )
 from backend.services.ai_negotiator import understand_message, write_reply
-from backend.services.security import is_admin
+from backend.services.security import bargaining_login_required, is_admin
 
 
 offer_bp = Blueprint("offer_bp", __name__)
@@ -27,6 +28,7 @@ def _to_int(value):
 # START BARGAINING SESSION
 # --------------------------------------------------
 @offer_bp.route("/api/bargaining/start", methods=["POST"])
+@bargaining_login_required
 def start_bargaining():
     data = request.get_json(silent=True) or {}
 
@@ -84,6 +86,7 @@ def start_bargaining():
 # SUBMIT CUSTOMER OFFER (number, TOTAL price)
 # --------------------------------------------------
 @offer_bp.route("/api/bargaining/offer", methods=["POST"])
+@bargaining_login_required
 def submit_offer():
     data = request.get_json(silent=True) or {}
 
@@ -110,9 +113,28 @@ def submit_offer():
 
 
 # --------------------------------------------------
+# CONFIRM THE DEAL (the only place where a deal is made)
+# --------------------------------------------------
+@offer_bp.route("/api/bargaining/confirm", methods=["POST"])
+@bargaining_login_required
+def confirm_bargaining():
+    data = request.get_json(silent=True) or {}
+
+    try:
+        session_id = _to_int(data.get("session_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "session_id must be a valid integer."}), 400
+
+    payload, status = confirm_deal(session_id)
+
+    return jsonify(payload), status
+
+
+# --------------------------------------------------
 # AI CHAT (natural language: English / Hindi / Hinglish)
 # --------------------------------------------------
 @offer_bp.route("/api/bargaining/chat", methods=["POST"])
+@bargaining_login_required
 def bargaining_chat():
     data = request.get_json(silent=True) or {}
 
@@ -170,15 +192,26 @@ def bargaining_chat():
         )
 
     elif parsed["intent"] == "ACCEPT_COUNTER":
-        customer_offer = get_last_counter(session.id)
+        pending_price = get_last_counter(session.id)
 
-        if customer_offer is None:
+        if pending_price is None:
             ctx = {**base_ctx, "type": "NO_COUNTER"}
             return jsonify({
                 "reply": write_reply(ctx, parsed["language"]),
                 "session_status": session.status,
                 "understood": parsed
             }), 200
+
+        # A chat message can never make the deal (the AI may misread "ok").
+        # The customer has to press the Confirm deal button.
+        ctx = {**base_ctx, "type": "CONFIRM_PROMPT", "pending_price": pending_price}
+        return jsonify({
+            "reply": write_reply(ctx, parsed["language"]),
+            "session_status": session.status,
+            "awaiting_confirmation": True,
+            "pending_price": pending_price,
+            "understood": parsed
+        }), 200
 
     # 3a. Not an offer (question / other): answer, do not use up a round
     if customer_offer is None:
@@ -203,6 +236,21 @@ def bargaining_chat():
     result, status = process_offer(session.id, customer_offer)
 
     if status != 200:
+        # final round, price already waiting: remind the customer to confirm
+        if result.get("awaiting_confirmation"):
+            ctx = {
+                **base_ctx,
+                "type": "CONFIRM_PROMPT",
+                "pending_price": result["pending_price"]
+            }
+            return jsonify({
+                "reply": write_reply(ctx, parsed["language"]),
+                "session_status": result["session_status"],
+                "awaiting_confirmation": True,
+                "pending_price": result["pending_price"],
+                "understood": parsed
+            }), 200
+
         return jsonify(result), status
 
     # 4. NLP: word the decision (LLM only sees safe facts)
@@ -213,6 +261,7 @@ def bargaining_chat():
         "customer_offer": result["customer_offer"],
         "counter_price": result["counter_price"],
         "final_price": result["final_price"],
+        "pending_price": result["pending_price"],
         "session_status": result["session_status"],
         "rounds_left": result["max_rounds"] - result["round_number"],
     }
@@ -226,6 +275,8 @@ def bargaining_chat():
         "round_number": result["round_number"],
         "max_rounds": result["max_rounds"],
         "session_status": result["session_status"],
+        "awaiting_confirmation": result["awaiting_confirmation"],
+        "pending_price": result["pending_price"],
         "understood": parsed
     }), 200
 

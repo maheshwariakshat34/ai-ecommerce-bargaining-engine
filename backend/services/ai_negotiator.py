@@ -132,9 +132,11 @@ Rules:
 - Use ONLY the amounts that appear in FACTS. Never invent, calculate or mention any other price,
   discount, cost, margin or minimum.
 - Write amounts with the rupee sign, e.g. ₹1850.
-- decision ACCEPT: confirm the deal at final_price and thank them. final_price is the SELLER's price, not the customer's offer.
-  If final_price is lower than customer_offer, say they offered more than needed so they get it at final_price.
-  Only say "your offer" when final_price equals customer_offer.
+- decision CONFIRM: the customer's offer works for you. Say you can do counter_price and that the deal is NOT final
+  yet: ask them to press the Confirm deal button to finish. If counter_price is lower than customer_offer, say they
+  offered more than needed, so the price is counter_price. Never say the deal is done.
+- type CONFIRM_PROMPT: the customer said yes. Say you are happy to do pending_price and ask them to press the
+  Confirm deal button to finish. Never say the deal is done.
 - decision COUNTER: say you can do counter_price and invite them to reply.
 - decision REJECT with session_status ACTIVE: politely say the offer is too low, ask for a better one,
   mention rounds_left.
@@ -162,6 +164,14 @@ def _fallback_reply(ctx, language):
         return (f"Deal! {ctx['product_name']} is yours at {_inr(ctx['final_price'])}. Thank you!"
                 if english else
                 f"Deal pakki! {ctx['product_name']} {_inr(ctx['final_price'])} mein aapka. Dhanyavaad!")
+    if d == "CONFIRM":
+        return (f"That works for me! I can do {_inr(ctx['counter_price'])}. Please press Confirm deal to finish."
+                if english else
+                f"Ye theek hai! Main {_inr(ctx['counter_price'])} mein de sakta hoon. Deal pakki karne ke liye Confirm deal dabaiye.")
+    if t == "CONFIRM_PROMPT":
+        return (f"Great! I can do {_inr(ctx['pending_price'])}. Please press Confirm deal to finish."
+                if english else
+                f"Badhiya! Main {_inr(ctx['pending_price'])} mein de sakta hoon. Deal pakki karne ke liye Confirm deal dabaiye.")
     if d == "COUNTER":
         return (f"I can do {_inr(ctx['counter_price'])}. What do you say?"
                 if english else
@@ -191,7 +201,7 @@ def _numbers_are_safe(reply, ctx):
     allowed = set()
     for key in ("counter_price", "final_price", "customer_offer",
                 "asking_price", "quantity", "round", "max_rounds",
-                "rounds_left"):
+                "rounds_left", "pending_price"):
         value = ctx.get(key)
         if isinstance(value, (int, float)):
             allowed.add(round(float(value), 2))

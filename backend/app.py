@@ -12,11 +12,11 @@ from backend.routes.product_routes import product_bp
 from backend.routes.offer_routes import offer_bp
 
 from backend.routes.clearance_routes import clearance_bp
+from backend.models.user import User
+from backend.routes.auth_routes import auth_bp
+from backend.services.security import init_auth
 
 
-
-
-# The website (HTML, CSS, JS) lives in the "frontend" folder next to "backend"
 FRONTEND_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "frontend"
@@ -34,6 +34,9 @@ def create_app():
     app.config.from_object(Config)
     app.register_blueprint(offer_bp)
     app.register_blueprint(clearance_bp)
+    app.config.from_object(Config)
+    init_auth(app)
+    app.register_blueprint(auth_bp)
 
 
     db.init_app(app)

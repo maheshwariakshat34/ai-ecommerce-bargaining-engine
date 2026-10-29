@@ -1,10 +1,12 @@
 import math
+import re
+from datetime import date, timedelta
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import IntegrityError
 
 from backend.models.product import Product, db
-from backend.services.security import admin_required, is_admin
+from backend.services.security import admin_required, has_admin_key, is_admin
 from backend.services.clearance_engine import calculate_clearance_price
 
 
@@ -31,6 +33,55 @@ def _int(value, name, minimum=0):
     if number != int(number):
         raise ValueError(f"{name} must be a whole number.")
     return int(number)
+
+
+# a web link, or a file inside the frontend folder; no spaces or quotes
+IMAGE_URL_PATTERN = re.compile(r"^(https?://|/|images/)[^\s\"'<>]+$")
+
+
+def _image_url(value):
+    """Photo link or None. Only http(s) links and local image paths are allowed."""
+    if value is None or str(value).strip() == "":
+        return None
+
+    value = str(value).strip()
+
+    if len(value) > 500 or not IMAGE_URL_PATTERN.match(value):
+        raise ValueError(
+            "image_url must be a link starting with http:// or https://, "
+            "or a path like images/photo.jpg (no spaces)."
+        )
+
+    return value
+
+
+def _expiry_date(d):
+    """
+    Expiry as a date. Accepts expiry_date ("YYYY-MM-DD") or, for older
+    clients, days_to_expiry (number of days from today). Empty = no expiry.
+    """
+    raw = d.get("expiry_date")
+
+    if isinstance(raw, date):
+        return raw
+
+    if raw not in (None, ""):
+        try:
+            return date.fromisoformat(str(raw).strip())
+        except ValueError:
+            raise ValueError("expiry_date must be a date like 2026-12-31.")
+
+    days = d.get("days_to_expiry")
+
+    if days in (None, ""):
+        return None
+
+    days = _int(days, "days_to_expiry", -36500)
+
+    if days > 36500:
+        raise ValueError("days_to_expiry is too large.")
+
+    return date.today() + timedelta(days=days)
 
 
 def validate_product_data(d):
@@ -63,10 +114,7 @@ def validate_product_data(d):
     if clean["sales_last_7_days"] > clean["sales_last_30_days"]:
         raise ValueError("sales_last_7_days cannot be greater than sales_last_30_days.")
 
-    expiry = d.get("days_to_expiry")
-    clean["days_to_expiry"] = (
-        None if expiry is None else _int(expiry, "days_to_expiry", -10**6)
-    )
+    clean["expiry_date"] = _expiry_date(d)
 
     demand = str(d.get("demand_level") or "MEDIUM").upper()
     if demand not in VALID_DEMAND:
@@ -76,6 +124,8 @@ def validate_product_data(d):
     clean["seasonal_factor"] = _num(
         d.get("seasonal_factor", 0), "seasonal_factor", -10**6
     )
+
+    clean["image_url"] = _image_url(d.get("image_url"))
     return clean
 
 
@@ -91,7 +141,10 @@ def public_product(p):
         # current selling price per item (after any clearance discount)
         "price": clearance["clearance_price"],
         "discount_percent": clearance["discount_percent"],
-        "stock": p.stock
+        "stock": p.stock,
+        # days left (None = no expiry); lets the shop show "Expires in 5 days"
+        "days_to_expiry": p.days_to_expiry,
+        "image_url": p.image_url
     }
 
 
@@ -99,7 +152,9 @@ def public_product(p):
 def get_products():
     products = Product.query.all()
 
-    if is_admin():
+    # The shop always gets the customer view. The full list (cost, expired items)
+    # is only for the seller dashboard (?view=admin) or tools using the admin key.
+    if has_admin_key() or (request.args.get("view") == "admin" and is_admin()):
         return jsonify([p.to_dict() for p in products])
 
     # Customers do not see expired products
@@ -154,13 +209,18 @@ def update_product(product_id):
 
     fields = [
         "name", "category", "base_price", "cost_price", "minimum_price",
-        "stock", "inventory_age", "days_to_expiry", "sales_last_7_days",
-        "sales_last_30_days", "demand_level", "seasonal_factor"
+        "stock", "inventory_age", "expiry_date", "sales_last_7_days",
+        "sales_last_30_days", "demand_level", "seasonal_factor", "image_url"
     ]
 
     # Merge existing values with updates, then validate the final result
     merged = {f: getattr(product, f) for f in fields}
     merged.update({f: data[f] for f in fields if f in data})
+
+    # older clients may still send days_to_expiry (days from today)
+    if "days_to_expiry" in data and "expiry_date" not in data:
+        merged["expiry_date"] = None
+        merged["days_to_expiry"] = data["days_to_expiry"]
 
     try:
         clean = validate_product_data(merged)

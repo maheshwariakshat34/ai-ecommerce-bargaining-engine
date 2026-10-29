@@ -23,15 +23,20 @@ SAFETY_MARGIN = 0.02
 FINAL_ROUND_ACCEPT_SHARE = 0.5
 
 
-def get_last_counter(session_id):
-    """Return the seller's most recent counter price in this session, or None."""
-    last = (
+def get_last_counter_offer(session_id):
+    """Return the Offer row that holds the seller's most recent price, or None."""
+    return (
         Offer.query
         .filter(Offer.session_id == session_id,
                 Offer.counter_price.isnot(None))
         .order_by(Offer.round_number.desc())
         .first()
     )
+
+
+def get_last_counter(session_id):
+    """Return the seller's most recent counter price in this session, or None."""
+    last = get_last_counter_offer(session_id)
     return last.counter_price if last else None
 
 
@@ -66,6 +71,20 @@ def process_offer(session_id, customer_offer):
 
     quantity = session.quantity
     current_round = session.current_round
+
+    # Final round and a price is already waiting for the customer to confirm:
+    # no round is left, so the only thing left to do is confirm it.
+    if current_round >= session.max_rounds:
+        waiting = get_last_counter_offer(session.id)
+
+        if waiting is not None and waiting.round_number == session.max_rounds:
+            return {
+                "error": "A price is waiting for your confirmation. "
+                         "Please confirm the deal.",
+                "awaiting_confirmation": True,
+                "pending_price": waiting.counter_price,
+                "session_status": session.status
+            }, 409
 
     if quantity > (product.stock or 0):
         return {
@@ -114,17 +133,24 @@ def process_offer(session_id, customer_offer):
 
     accept_price = None
 
-    if customer_offer >= target_price:
-        accept_price = target_price
-    elif previous_counter is not None and customer_offer >= previous_counter:
+    # The seller's own standing price comes first, so a customer is never asked
+    # to pay more than a price the seller already offered.
+    if previous_counter is not None and customer_offer >= previous_counter:
         accept_price = previous_counter
+    elif customer_offer >= target_price:
+        accept_price = target_price
     elif is_final_round and customer_offer >= final_round_min:
         accept_price = customer_offer
 
     if accept_price is not None:
-        decision = "ACCEPT"
-        final_price = round(accept_price, 2)
-        message = f"Offer accepted at {final_price:.2f}."
+        # The price is agreed, but the deal is NOT made yet. It becomes final
+        # only when the customer confirms it (see confirm_deal below).
+        decision = "CONFIRM"
+        counter_price = round(accept_price, 2)
+        message = (
+            f"{counter_price:.2f} is acceptable. "
+            f"Waiting for the customer to confirm the deal."
+        )
 
     elif is_final_round:
         decision = "REJECT"
@@ -161,32 +187,17 @@ def process_offer(session_id, customer_offer):
         customer_offer=customer_offer,
         quantity=quantity,
         round_number=current_round,
-        seller_response=decision,
+        # a price waiting for confirmation is stored as a counter price
+        seller_response="COUNTER" if decision == "CONFIRM" else decision,
         final_price=final_price,
         counter_price=counter_price
     ))
 
-    if decision == "ACCEPT":
-        session.status = "ACCEPTED"
-        session.final_price = final_price
-
-        # Deal done: reduce stock and record the sale in ONE atomic update,
-        # so two simultaneous deals can never sell the same last units.
-        updated = Product.query.filter(
-            Product.id == product.id,
-            Product.stock >= quantity
-        ).update({
-            Product.stock: Product.stock - quantity,
-            Product.sales_last_7_days: Product.sales_last_7_days + quantity,
-            Product.sales_last_30_days: Product.sales_last_30_days + quantity,
-        }, synchronize_session=False)
-
-        if updated == 0:
-            db.session.rollback()
-            return {
-                "error": "Stock changed while the deal was being made. Please try again."
-            }, 409
-
+    if decision == "CONFIRM":
+        # Nothing is sold yet. In the final round there is no round left, so the
+        # session stays open and waits for the customer's confirmation.
+        if not is_final_round:
+            session.current_round += 1
     elif is_final_round:
         session.status = "CLOSED"
     else:
@@ -216,6 +227,8 @@ def process_offer(session_id, customer_offer):
         "counter_price": counter_price,
         "final_price": final_price,
         "session_status": session.status,
+        "awaiting_confirmation": decision == "CONFIRM",
+        "pending_price": counter_price if decision == "CONFIRM" else None,
         "pricing": {
             "base_total": pricing["base_total"],
             "clearance_unit_price": pricing["clearance_unit_price"],
@@ -237,4 +250,104 @@ def process_offer(session_id, customer_offer):
             "negotiation_floor": round(negotiation_floor, 2),
             "target_price": target_price
         }
+    }, 200
+
+
+def confirm_deal(session_id):
+    """
+    The customer confirms the seller's last price. ONLY here is the deal made:
+    the session is closed as ACCEPTED, and stock and sales are updated.
+    Returns (payload_dict, http_status).
+    """
+    session = db.session.get(
+        BargainingSession, session_id, with_for_update=True
+    )
+
+    if not session:
+        return {"error": "Bargaining session not found."}, 404
+
+    if session.status != "ACTIVE":
+        return {
+            "error": "This bargaining session is no longer active.",
+            "session_status": session.status,
+            "final_price": session.final_price
+        }, 400
+
+    product = db.session.get(Product, session.product_id)
+
+    if not product:
+        return {
+            "error": "Product associated with this session was not found."
+        }, 404
+
+    if product.days_to_expiry is not None and product.days_to_expiry <= 0:
+        return {"error": "This product has expired and cannot be sold."}, 400
+
+    offer = get_last_counter_offer(session.id)
+
+    if offer is None:
+        return {
+            "error": "There is no price to confirm yet. Please make an offer first."
+        }, 400
+
+    quantity = session.quantity
+    price = round(float(offer.counter_price), 2)
+
+    try:
+        pricing = calculate_pricing(product, quantity)
+    except (ValueError, TypeError, AttributeError) as error:
+        return {
+            "error": "Unable to calculate product pricing.",
+            "details": str(error)
+        }, 400
+
+    # Safety net: never sell below cost, even if the price changed since it was offered
+    if price < float(pricing["cost_total"]) - 0.005:
+        return {
+            "error": "This price is no longer available. Please make a new offer."
+        }, 409
+
+    offer.seller_response = "ACCEPT"
+    offer.final_price = price
+
+    session.status = "ACCEPTED"
+    session.final_price = price
+
+    # Deal done: reduce stock and record the sale in ONE atomic update,
+    # so two simultaneous deals can never sell the same last units.
+    updated = Product.query.filter(
+        Product.id == product.id,
+        Product.stock >= quantity
+    ).update({
+        Product.stock: Product.stock - quantity,
+        Product.sales_last_7_days: Product.sales_last_7_days + quantity,
+        Product.sales_last_30_days: Product.sales_last_30_days + quantity,
+    }, synchronize_session=False)
+
+    if updated == 0:
+        db.session.rollback()
+        return {
+            "error": "Stock changed while the deal was being made. Please try again."
+        }, 409
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "Could not save the deal."}, 500
+
+    return {
+        "message": f"Deal confirmed at {price:.2f}.",
+        "confirmed": True,
+        "session_id": session.id,
+        "product_id": product.id,
+        "product_name": product.name,
+        "quantity": quantity,
+        "round_number": offer.round_number,
+        "max_rounds": session.max_rounds,
+        "decision": "ACCEPT",
+        "customer_offer": price,
+        "counter_price": price,
+        "final_price": price,
+        "session_status": session.status
     }, 200

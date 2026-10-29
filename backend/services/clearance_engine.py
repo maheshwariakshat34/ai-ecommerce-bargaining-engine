@@ -6,7 +6,8 @@ Rules:
 2. Sales trend matters: recent 7-day rate vs 30-day average.
 3. No discount while pressure is below CLEARANCE_THRESHOLD (healthy stock).
 4. Discount grows with pressure but is capped at MAX_DISCOUNT_PERCENT.
-5. Near-expiry products get a forced minimum pressure.
+5. Expiry sets a minimum pressure that grows smoothly as the date gets
+   closer (0 at 60 days left, 1 on the expiry day).
 6. Price never goes below cost_price and never above base_price.
 """
 
@@ -19,8 +20,6 @@ COVER_OK_DAYS = 30             # <= 30 days of stock is healthy
 COVER_BAD_DAYS = 120           # >= 120 days of stock is max pressure
 AGE_MAX_DAYS = 180
 EXPIRY_WINDOW_DAYS = 60
-EXPIRY_FORCE_DAYS = 7          # <= 7 days left: forced high pressure
-EXPIRY_FORCE_PRESSURE = 0.80
 
 
 def _clamp(value, low=0.0, high=1.0):
@@ -46,17 +45,17 @@ def calculate_clearance_price(product):
     sales_30d = max(product.sales_last_30_days or 0, 0)
     days_to_expiry = product.days_to_expiry
 
-    # -----------------------------------------
+
     # SALES VELOCITY (units/day)
-    # -----------------------------------------
+
     recent_rate = sales_7d / 7
     average_rate = sales_30d / 30
 
     sales_velocity = recent_rate * 0.6 + average_rate * 0.4
 
-    # -----------------------------------------
+
     # 1. INVENTORY PRESSURE (days of cover)
-    # -----------------------------------------
+
     if sales_velocity > 0:
         days_of_cover = stock / sales_velocity
     else:
@@ -67,9 +66,9 @@ def calculate_clearance_price(product):
         / (COVER_BAD_DAYS - COVER_OK_DAYS)
     )
 
-    # -----------------------------------------
+
     # 2. AGE PRESSURE
-    # -----------------------------------------
+
     age_pressure = _clamp(inventory_age / AGE_MAX_DAYS)
 
     # -----------------------------------------
@@ -112,9 +111,10 @@ def calculate_clearance_price(product):
         + expiry_pressure * 0.20
     )
 
-    # Near-expiry stock must move, whatever the other signals say
-    if days_to_expiry is not None and days_to_expiry <= EXPIRY_FORCE_DAYS:
-        pressure_score = max(pressure_score, EXPIRY_FORCE_PRESSURE)
+    # Stock that is close to its expiry date must move, whatever the other
+    # signals say. The minimum rises a little every day, so the price keeps
+    # falling as the date gets closer instead of stopping at one level.
+    pressure_score = max(pressure_score, expiry_pressure)
 
     pressure_score = _clamp(pressure_score)
 
