@@ -45,6 +45,26 @@ def calculate_clearance_price(product):
     sales_30d = max(product.sales_last_30_days or 0, 0)
     days_to_expiry = product.days_to_expiry
 
+    # BUG 6 FIX: 0-stock items cannot be sold; return list price with no discount
+    if stock == 0:
+        return {
+            "base_price": base_price,
+            "cost_price": cost_price,
+            "minimum_price": minimum_price,
+            "clearance_price": base_price,
+            "discount_percent": 0.0,
+            "clearance_level": "NORMAL",
+            "pressure_score": 0.0,
+            "inventory_pressure": 0.0,
+            "age_pressure": 0.0,
+            "demand_pressure": 0.0,
+            "velocity_pressure": 0.0,
+            "expiry_pressure": 0.0,
+            "sales_velocity": 0.0,
+            "days_of_cover": 0.0,
+            "cost_price_reached": False,
+            "reasons": ["Out of stock"],
+        }
 
     # SALES VELOCITY (units/day)
 

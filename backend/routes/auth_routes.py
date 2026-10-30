@@ -19,7 +19,8 @@ EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_FAILS = 5          # wrong passwords allowed ...
 LOCK_SECONDS = 300     # ... within this many seconds, then wait
 
-_fails = {}            # (ip, email) -> times of wrong passwords (resets on restart)
+
+_fails = {}
 
 # used when the email is unknown, so the reply takes the same time
 _DUMMY_HASH = generate_password_hash("not-a-real-password")

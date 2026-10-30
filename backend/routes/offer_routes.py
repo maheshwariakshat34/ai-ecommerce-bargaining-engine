@@ -12,7 +12,8 @@ from backend.services.bargaining_service import (
     get_last_counter,
 )
 from backend.services.ai_negotiator import understand_message, write_reply
-from backend.services.security import bargaining_login_required, is_admin
+from backend.services.security import bargaining_login_required, is_admin, current_user
+from backend.models.cart import CartItem
 
 
 offer_bp = Blueprint("offer_bp", __name__)
@@ -64,7 +65,9 @@ def start_bargaining():
         quantity=quantity,
         current_round=1,
         max_rounds=3,
-        status="ACTIVE"
+        status="ACTIVE",
+        # BUG 15 FIX: store the owner so other users cannot hijack this session
+        user_id=current_user().id if current_user() else None
     )
 
     db.session.add(session)
@@ -103,6 +106,13 @@ def submit_offer():
             "error": "Customer offer must be a finite number greater than zero."
         }), 400
 
+    # BUG 1 FIX: enforce ownership BEFORE process_offer modifies the DB
+    session_obj = db.session.get(BargainingSession, session_id)
+    if session_obj and session_obj.user_id is not None:
+        caller = current_user()
+        if caller is None or (caller.id != session_obj.user_id and not is_admin()):
+            return jsonify({"error": "This session does not belong to you."}), 403
+
     payload, status = process_offer(session_id, customer_offer)
 
     # Customers must never see cost, floor or target price
@@ -125,7 +135,40 @@ def confirm_bargaining():
     except (TypeError, ValueError):
         return jsonify({"error": "session_id must be a valid integer."}), 400
 
+    # BUG 15 FIX: enforce session ownership before confirming
+    session_obj = db.session.get(BargainingSession, session_id)
+    if session_obj and session_obj.user_id is not None:
+        caller = current_user()
+        if caller is None or (caller.id != session_obj.user_id and not is_admin()):
+            return jsonify({"error": "This session does not belong to you."}), 403
+
     payload, status = confirm_deal(session_id)
+
+    # Auto-add the bargained item to the user's cart on success
+    if status == 200:
+        try:
+            caller = current_user()
+            session_obj = db.session.get(BargainingSession, session_id)
+            product = db.session.get(Product, session_obj.product_id) if session_obj else None
+
+            if caller and session_obj and product and session_obj.final_price:
+                price_each = round(session_obj.final_price / session_obj.quantity, 4)
+                cart_item = CartItem(
+                    user_id        = caller.id,
+                    product_id     = product.id,
+                    product_name   = product.name,
+                    quantity       = session_obj.quantity,
+                    price_per_unit = price_each,
+                    original_price = product.base_price,
+                    session_id     = session_id,
+                )
+                db.session.add(cart_item)
+                db.session.commit()
+                # Tell the frontend the new cart count
+                cart_count = CartItem.query.filter_by(user_id=caller.id).count()
+                payload["cart_count"] = cart_count
+        except Exception:
+            pass   # cart addition failure must never break the confirm response
 
     return jsonify(payload), status
 
@@ -285,11 +328,18 @@ def _session_product(product):
     if not product:
         return None
 
+    # BUG 16 FIX: include clearance price and discount_percent so the frontend
+    # can show the correct price and clearance badge when restoring an old session.
+    from backend.services.clearance_engine import calculate_clearance_price
+    clearance = calculate_clearance_price(product)
+
     data = {
         "id": product.id,
         "name": product.name,
         "base_price": product.base_price,
-        "stock": product.stock
+        "stock": product.stock,
+        "price": clearance["clearance_price"],
+        "discount_percent": clearance["discount_percent"]
     }
 
     # Cost and minimum price: admin only
@@ -304,11 +354,18 @@ def _session_product(product):
 # GET BARGAINING SESSION AND HISTORY
 # --------------------------------------------------
 @offer_bp.route("/api/bargaining/session/<int:session_id>", methods=["GET"])
+@bargaining_login_required  # BUG 9 FIX: was missing auth guard
 def get_bargaining_session(session_id):
     session = db.session.get(BargainingSession, session_id)
 
     if not session:
         return jsonify({"error": "Bargaining session not found."}), 404
+
+    # BUG 15 FIX: only the session owner (or admin) may read it
+    if session.user_id is not None:
+        caller = current_user()
+        if caller is None or (caller.id != session.user_id and not is_admin()):
+            return jsonify({"error": "This session does not belong to you."}), 403
 
     product = db.session.get(Product, session.product_id)
 

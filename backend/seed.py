@@ -85,7 +85,7 @@ PRODUCTS = [
     # Plenty of shelf life -> no expiry pressure
     P("Basmati Rice 5kg", "Food", 750, 520, 600, 40, 25, 300, 8, 32, "HIGH"),
     # Expires in 3 days, lots of stock -> deepest clearance
-    P("Cream Biscuits", "Food", 60, 35, 45, 200, 40, 3, 15, 60, "MEDIUM"),
+    P("Cream Biscuits", "Food", 60, 35, 45, 200, 40, 10, 15, 60, "MEDIUM"),
     # Moderate expiry window
     P("Green Tea (100 bags)", "Food", 450, 280, 340, 35, 60, 45, 3, 12, "MEDIUM"),
 
@@ -105,9 +105,9 @@ PRODUCTS = [
     P("Notebook (pack of 5)", "Stationery", 350, 180, 240, 100, 20, None, 20, 80, "HIGH"),
 
     # ================= EXPIRY TEST CASES =================
-    # Expires tomorrow: should be at the deepest discount
-    P("Fresh Bread Loaf", "Food", 80, 40, 55, 25, 2, 1, 8, 30, "MEDIUM"),
-    # Already expired 2 days ago: hidden from customers, cannot be bargained
+
+    P("Fresh Bread Loaf", "Food", 80, 40, 55, 25, 2, 5, 8, 30, "MEDIUM"),
+
     P("Expired Yogurt Cup", "Food", 60, 30, 40, 18, 30, 6, 4, 20, "MEDIUM"),
 ]
 

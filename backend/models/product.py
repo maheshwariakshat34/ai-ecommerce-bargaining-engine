@@ -91,7 +91,7 @@ class Product(db.Model):
 
 
 
-   # SALES DATA
+    # SALES DATA
     # Number of units sold in last 7 days
 
     sales_last_7_days = db.Column(
@@ -110,7 +110,7 @@ class Product(db.Model):
     )
 
 
-   # DEMAND
+    # DEMAND
 
 
     # HIGH / MEDIUM / LOW

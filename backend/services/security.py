@@ -12,7 +12,7 @@ from backend.models.user import User
 
 load_dotenv()
 
-# True = a customer must be logged in to bargain (browsing the shop stays open)
+
 REQUIRE_LOGIN_TO_BARGAIN = True
 
 
@@ -21,7 +21,7 @@ def init_auth(app):
     key = os.getenv("SECRET_KEY")
 
     if not key:
-        # no SECRET_KEY in .env: make one once and keep it, so logins survive restarts
+
         os.makedirs(app.instance_path, exist_ok=True)
         path = os.path.join(app.instance_path, "secret_key.txt")
 
@@ -36,6 +36,8 @@ def init_auth(app):
     app.config["SECRET_KEY"] = key
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    # BUG 7 FIX: require HTTPS for session cookies in production
+    app.config["SESSION_COOKIE_SECURE"] = not app.debug
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 

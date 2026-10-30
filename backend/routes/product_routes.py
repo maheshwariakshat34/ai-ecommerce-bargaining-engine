@@ -239,7 +239,7 @@ def update_product(product_id):
     return jsonify({
         "message": "Product updated successfully",
         "product": product.to_dict()
-    })
+    }), 200  # BUG 6 FIX: explicit status code
 
 
 @product_bp.route("/api/products/<int:product_id>", methods=["DELETE"])
@@ -260,4 +260,4 @@ def delete_product(product_id):
             "message": "Cannot delete product: it has bargaining sessions or offers."
         }), 409
 
-    return jsonify({"message": "Product deleted successfully"})
+    return jsonify({"message": "Product deleted successfully"}), 200  # BUG 5 FIX: explicit status code

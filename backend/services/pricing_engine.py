@@ -40,10 +40,10 @@ def calculate_pricing(product, quantity):
         clearance_unit_price
     )
 
-    # Protect the seller's total product cost.
-    final_bulk_price = max(
-        math.ceil(bulk["discounted_total"]),
-        cost_total
+    # BUG 4 FIX: apply math.ceil AFTER max() so fractional cost_total
+    # doesn't bypass whole-rupee rounding on the final bulk price.
+    final_bulk_price = math.ceil(
+        max(bulk["discounted_total"], cost_total)
     )
 
     # Report the discount actually applied after cost protection.
@@ -72,7 +72,7 @@ def calculate_pricing(product, quantity):
         "nominal_bulk_discount_amount": bulk["discount_amount"],
 
         "bulk_price": round(final_bulk_price, 2),
-        "negotiation_price": round(final_bulk_price, 2),
+        # BUG 18 FIX: removed redundant negotiation_price (was always == bulk_price)
 
         "normal_minimum_total": round(
             product.minimum_price * quantity, 2

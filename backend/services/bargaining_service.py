@@ -74,10 +74,34 @@ def process_offer(session_id, customer_offer):
 
     # Final round and a price is already waiting for the customer to confirm:
     # no round is left, so the only thing left to do is confirm it.
+    # BUG 8 FIX: drop the round_number equality check. The CONFIRM offer is stored
+    # at round N, but current_round was already bumped to N+1, so the old guard
+    # (waiting.round_number == session.max_rounds) never matched, allowing a free
+    # extra round. Now any pending counter price blocks a new offer.
+    # BUG 4 FIX: also block when a CONFIRM was issued in a non-final round
+    # (session.confirming == True) so the customer cannot slip in a new offer.
+    if session.confirming:
+        waiting = get_last_counter_offer(session.id)
+        return {
+            "error": "A price is waiting for your confirmation. "
+                     "Please confirm the deal.",
+            "awaiting_confirmation": True,
+            "pending_price": waiting.counter_price if waiting else None,
+            "session_status": session.status
+        }, 409
+
+    if current_round > session.max_rounds:
+        # BUG 2 FIX: extra round was somehow reached with no pending counter.
+        # Block it cleanly rather than letting an extra free offer through.
+        return {
+            "error": "No more rounds available. This negotiation has ended.",
+            "session_status": session.status,
+        }, 409
+
     if current_round >= session.max_rounds:
         waiting = get_last_counter_offer(session.id)
 
-        if waiting is not None and waiting.round_number == session.max_rounds:
+        if waiting is not None:
             return {
                 "error": "A price is waiting for your confirmation. "
                          "Please confirm the deal.",
@@ -126,9 +150,10 @@ def process_offer(session_id, customer_offer):
     # Seller's last stated price, and the lowest offer we take in the final round
     last_price = previous_counter if previous_counter is not None else target_price
     last_price = max(last_price, negotiation_floor)
-    final_round_min = round(
+    # BUG 7 FIX: explicitly clamp final_round_min to negotiation_floor
+    final_round_min = max(
+        round(negotiation_floor + FINAL_ROUND_ACCEPT_SHARE * (last_price - negotiation_floor), 2),
         negotiation_floor
-        + FINAL_ROUND_ACCEPT_SHARE * (last_price - negotiation_floor), 2
     )
 
     accept_price = None
@@ -165,6 +190,8 @@ def process_offer(session_id, customer_offer):
         # Start from the seller's last price (target first, then the previous counter)
         # so the seller moves towards the customer every round.
         reference = previous_counter if previous_counter is not None else target_price
+        # BUG 5 FIX: round reference to 2dp for stable float comparison
+        reference = round(float(reference), 2)
         counter_price = max(negotiation_floor, (customer_offer + reference) / 2)
         # Whole rupees, rounded up, so the customer sees a clean number
         counter_price = math.ceil(counter_price)
@@ -194,8 +221,9 @@ def process_offer(session_id, customer_offer):
     ))
 
     if decision == "CONFIRM":
-        # Nothing is sold yet. In the final round there is no round left, so the
-        # session stays open and waits for the customer's confirmation.
+        # Nothing is sold yet. Set confirming=True so no new offer can bypass
+        # this pending price (BUG 4 FIX). Only bump the round in non-final rounds.
+        session.confirming = True
         if not is_final_round:
             session.current_round += 1
     elif is_final_round:
@@ -243,7 +271,6 @@ def process_offer(session_id, customer_offer):
             "nominal_bulk_discount_amount":
                 pricing["nominal_bulk_discount_amount"],
             "bulk_price": pricing["bulk_price"],
-            "negotiation_price": pricing["negotiation_price"],
             "normal_minimum_total": pricing["normal_minimum_total"],
             "cost_total": pricing["cost_total"],
             "cost_price_reached": pricing["cost_price_reached"],
@@ -312,6 +339,7 @@ def confirm_deal(session_id):
 
     session.status = "ACCEPTED"
     session.final_price = price
+    session.confirming = False   # BUG 4 FIX: clear the pending-confirm flag
 
     # Deal done: reduce stock and record the sale in ONE atomic update,
     # so two simultaneous deals can never sell the same last units.
