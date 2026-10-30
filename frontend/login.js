@@ -5,7 +5,8 @@ let mode = "login";
 let busy = false;
 
 function safeNext(raw) {
-    if (typeof raw === "string" && /^[A-Za-z0-9_-]+\.html(\?[A-Za-z0-9_=&%.-]*)?$/.test(raw)) {
+    // Accept clean paths like /bargain?product=3, /admin, / — no external URLs
+    if (typeof raw === "string" && /^\/[A-Za-z0-9_\-]*(\?[A-Za-z0-9_=&%.-]*)?$/.test(raw)) {
         return raw;
     }
     return null;
@@ -14,10 +15,10 @@ function safeNext(raw) {
 // where to go after login
 function landingFor(user, next) {
     const target = safeNext(next);
-    const sellerPage = target && /^admin\.html/.test(target);
+    const sellerPage = target && /^\/admin/.test(target);
 
     if (target && (user.role === "admin" || !sellerPage)) return target;
-    return user.role === "admin" ? "admin.html" : "index.html";
+    return user.role === "admin" ? "/admin" : "/";
 }
 
 function showError(message) {
@@ -117,6 +118,7 @@ async function start() {
         showError("You are logged in as a customer. Log out first to use the seller login.");
         return;
     }
+
 
     window.location.replace(landingFor({ role: currentUser.role }, params.get("next")));
 }

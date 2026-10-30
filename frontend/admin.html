@@ -9,7 +9,7 @@
 <body>
 <header>
     <b>Seller dashboard</b>
-    <div class="row"><span id="who" class="muted"></span><a href="index.html">Store</a><button class="sec" id="out">Log out</button></div>
+    <div class="row"><span id="who" class="muted"></span><a href="/">Store</a><button class="sec" id="out">Log out</button></div>
 </header>
 
 <main>
@@ -42,7 +42,7 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const inr = n => '₹' + Number(n).toLocaleString('en-IN');
-const LOGIN = 'login.html?as=seller&next=admin.html';
+const LOGIN = '/login?as=seller&next=/admin';
 
 const FIELDS = [
     ['name','Name','text'], ['category','Category','text'],
@@ -98,7 +98,7 @@ function openForm(p) {
 
 $('#add').onclick = () => openForm(null);
 $('#cancel').onclick = () => $('#modal').classList.remove('open');
-$('#out').onclick = async () => { await api('/api/auth/logout', 'POST', {}); location.assign('login.html'); };
+$('#out').onclick = async () => { await api('/api/auth/logout', 'POST', {}); location.assign('/'); };
 
 $('#rows').onclick = async e => {
     const d = e.target.dataset;

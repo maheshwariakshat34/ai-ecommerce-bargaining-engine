@@ -117,7 +117,15 @@ function setOnline(online) {
 }
 
 function bargainUrl(product) {
-    return "bargain.html?product=" + product.id;
+    return "/bargain?product=" + product.id;
+}
+
+// update cart badge in the navbar (called from bargain.js after deal accepted)
+function updateCartBadge(count) {
+    let badge = $("cartBadge");
+    if (!badge) return;
+    badge.textContent = count;
+    badge.hidden = count === 0;
 }
 
 function isClearance(product) {
@@ -140,7 +148,10 @@ function expiryText(product) {
     const days = product.days_to_expiry;
 
     if (days === null || days === undefined || days > 30) return "";
-    if (days <= 1) return "Expires tomorrow";
+    // BUG 10 FIX: days==0 means "expires today", days<0 means already expired.
+    // Previously both showed "Expires tomorrow" which was wrong.
+    if (days <= 0) return "Expires today";
+    if (days === 1) return "Expires tomorrow";
     return "Expires in " + days + " days";
 }
 
@@ -205,12 +216,12 @@ async function loadSession() {
     showUser();
 }
 
-// login page that brings the person back here, like login.html?next=bargain.html%3Fproduct%3D3
+// login page that brings the person back here, like /login?next=/bargain%3Fproduct%3D3
 function loginUrl() {
-    const page = window.location.pathname.split("/").pop() + window.location.search;
-    const skip = !page || page.startsWith("login.html");
+    const page = window.location.pathname + window.location.search;
+    const skip = !page || page === "/" || page.startsWith("/login");
 
-    return "login.html" + (skip ? "" : "?next=" + encodeURIComponent(page));
+    return "/login" + (skip ? "" : "?next=" + encodeURIComponent(page));
 }
 
 function showUser() {
@@ -230,7 +241,7 @@ function showUser() {
         dashboard.id = "dashboardBtn";
         dashboard.textContent = "Seller dashboard";
         dashboard.addEventListener("click", function () {
-            window.location.assign("admin.html");
+            window.location.assign("/admin");
         });
         $("userDropdown").insertBefore(dashboard, $("authBtn"));
     } else if (currentUser.role !== "admin" && dashboard) {
@@ -255,7 +266,7 @@ async function initNavbar() {
         const orders = event.target.closest('[data-nav="orders"]');
         if (orders) {
             event.preventDefault();
-            showToast("My Orders will be available once ordering is added.");
+            window.location.assign("/orders");
         }
     });
 
@@ -270,13 +281,13 @@ async function initNavbar() {
         await post("/api/auth/logout", {});
         showToast("You have been logged out.");
         setTimeout(function () {
-            window.location.assign("index.html");
+            window.location.assign("/");
         }, 600);
     });
 
     $("ordersBtn").addEventListener("click", function () {
         $("userDropdown").hidden = true;
-        showToast("My Orders will be available once ordering is added.");
+        window.location.assign("/orders");
     });
 
     $("bellBtn").addEventListener("click", function () {

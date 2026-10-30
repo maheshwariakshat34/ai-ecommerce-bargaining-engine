@@ -112,7 +112,8 @@ function showProduct() {
     if (started) {
         html += '<div class="b-locked">' +
             "<span>Quantity: <strong>" + quantity + "</strong></span>" +
-            "<span>List total: <strong>" + formatPrice(product.price * quantity) + "</strong></span>" +
+            // BUG 12 FIX: use base_price (full list price) not the clearance price
+            "<span>List total: <strong>" + formatPrice(product.base_price * quantity) + "</strong></span>" +
             "</div>";
     } else {
         html += '<div class="b-setup">' +
@@ -128,6 +129,9 @@ function showProduct() {
     }
 
     $("productCard").innerHTML = html;
+
+    // Update browser tab title with product name
+    document.title = "Bargain — " + product.name + " | SmartShop";
 
     if (!started) {
         $("qtyMinus").addEventListener("click", function () {
@@ -201,13 +205,13 @@ function showRounds() {
 
 // ---------- end of the negotiation ----------
 
-function makeLink(text) {
+function makeLink(text, href) {
     const box = document.createElement("div");
     const link = document.createElement("a");
 
     box.className = "deal-actions";
     link.className = "btn-link";
-    link.href = "index.html";
+    link.href = href || "/";
     link.textContent = text;
     box.appendChild(link);
 
@@ -244,7 +248,23 @@ function dealDone(total) {
         card.appendChild(savedLine);
     }
 
-    card.appendChild(makeLink("Continue shopping"));
+    // Action buttons row
+    const actions = document.createElement("div");
+    actions.className = "deal-actions";
+
+    const cartLink = document.createElement("a");
+    cartLink.className = "btn-link btn-primary";
+    cartLink.href = "/orders";
+    cartLink.textContent = "🛒 View Cart & Order";
+
+    const shopLink = document.createElement("a");
+    shopLink.className = "btn-link";
+    shopLink.href = "/";
+    shopLink.textContent = "Continue shopping";
+
+    actions.appendChild(cartLink);
+    actions.appendChild(shopLink);
+    card.appendChild(actions);
 
     addMessage("assistant", "", card);
     updateInput();
@@ -300,6 +320,8 @@ function handleReply(data) {
 
     if (data.session_status === "ACCEPTED") {
         if (!finished) dealDone(data.final_price);
+        // Update cart badge in navbar
+        if (typeof data.cart_count === "number") updateCartBadge(data.cart_count);
     } else if (data.session_status === "CLOSED") {
         if (!finished) noDeal();
     } else {
@@ -343,7 +365,7 @@ async function startSession() {
         maxRounds = result.data.session.max_rounds;
 
         // so a refresh opens the same bargaining again
-        window.history.replaceState(null, "", "bargain.html?product=" + product.id + "&session=" + sessionId);
+        window.history.replaceState(null, "", "/bargain?product=" + product.id + "&session=" + sessionId);
 
         showProduct();
         showRounds();
@@ -423,9 +445,6 @@ async function acceptCounter() {
         } else {
             const data = result.data;
 
-            data.reply = "Deal! " + product.name + " is yours at " +
-                formatPrice(data.final_price) + ". Thank you!";
-
             handleReply(data);
         }
     } catch (error) {
@@ -459,12 +478,12 @@ async function openOldSession(id, allProducts) {
         response = await fetch("/api/bargaining/session/" + id);
     } catch (error) {
         setOnline(false);
-        showProblem('Could not reach the server. <a href="index.html">Back to products</a>');
+        showProblem('Could not reach the server. <a href="/">Back to products</a>');
         return;
     }
 
     if (!response.ok) {
-        showProblem('This bargaining session was not found. <a href="index.html">Back to products</a>');
+        showProblem('This bargaining session was not found. <a href="/">Back to products</a>');
         return;
     }
 
@@ -481,8 +500,10 @@ async function openOldSession(id, allProducts) {
             name: info.name || "Product",
             category: "",
             base_price: info.base_price,
-            price: info.base_price,
-            discount_percent: 0,
+            // BUG 16 FIX: _session_product now returns price & discount_percent.
+            // Use them so the clearance badge and price display are correct.
+            price: info.price !== undefined ? info.price : info.base_price,
+            discount_percent: info.discount_percent || 0,
             stock: info.stock || 0
         };
     }
@@ -506,9 +527,17 @@ async function openOldSession(id, allProducts) {
         if (round.counter !== null) lastCounter = round.counter;
     });
 
+
+    if (session.confirming) {
+        confirming = true;
+    }
+
     showProduct();
     showRounds();
     showRoundPill();
+
+    // Update browser tab title for restored session too
+    document.title = "Bargain — " + product.name + " | SmartShop";
 
     if (session.status === "ACCEPTED") {
         dealDone(session.final_price);
@@ -552,7 +581,7 @@ async function start() {
         setOnline(true);
     } catch (error) {
         setOnline(false);
-        showProblem('Could not load the product. Is the server running? <a href="index.html">Back to products</a>');
+        showProblem('Could not load the product. Is the server running? <a href="/">Back to products</a>');
         return;
     }
 
@@ -564,7 +593,7 @@ async function start() {
     product = allProducts.find(function (p) { return p.id === productId; });
 
     if (!product || product.stock <= 0) {
-        showProblem('This product is not available. <a href="index.html">Choose another product</a>');
+        showProblem('This product is not available. <a href="/">Choose another product</a>');
         return;
     }
 

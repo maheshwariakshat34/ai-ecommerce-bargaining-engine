@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Cart & Orders | SmartShop</title>
+    <meta name="description" content="Review your bargained cart items and place your order on SmartShop.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="orders.css">
+</head>
+<body>
+
+<header class="navbar">
+    <a href="/" class="brand">
+        <span class="brand-icon">🛒</span>
+        SmartShop
+    </a>
+
+    <nav id="mainNav">
+        <a href="/">Home</a>
+        <a href="/#products">Products</a>
+        <a href="/#products" data-nav="clearance">Clearance</a>
+        <a href="/bargain" data-nav="bargain">Bargain</a>
+        <a href="/orders" class="active">My Orders</a>
+    </nav>
+
+    <div class="nav-right">
+        <button class="icon-btn" id="bellBtn" type="button">🔔</button>
+
+        <div class="user" id="userMenu">
+            <button class="user-chip" id="userBtn" type="button">
+                <span class="avatar" id="userAvatar">G</span>
+                <span class="user-name" id="userName">Guest</span>
+                <span>▾</span>
+            </button>
+
+            <div class="user-dropdown" id="userDropdown" hidden>
+                <p class="user-line" id="userLine"></p>
+                <button type="button" id="ordersBtn">My Orders</button>
+                <button type="button" id="authBtn"></button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<div class="orders-layout">
+
+    <!-- PAGE HEADER -->
+    <div class="orders-page-header">
+        <a href="/" class="back-link">← Continue shopping</a>
+        <h1>🛒 My Cart &amp; Orders</h1>
+        <p class="orders-sub">Review your bargained deals and place your order</p>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs-bar">
+        <button class="tab-btn active" id="tabCart" type="button">Cart</button>
+        <button class="tab-btn" id="tabHistory" type="button">Order History</button>
+    </div>
+
+    <!-- ===== CART TAB ===== -->
+    <section id="cartSection">
+
+        <!-- Loading -->
+        <div class="loading-state" id="cartLoading">
+            <div class="spinner"></div>
+            <p>Loading your cart…</p>
+        </div>
+
+        <!-- Empty -->
+        <div class="empty-state" id="cartEmpty" hidden>
+            <div class="empty-icon">🛍️</div>
+            <h2>Your cart is empty</h2>
+            <p>Bargain on a product to add it here!</p>
+            <a href="/" class="btn-primary-lg">Browse Products</a>
+        </div>
+
+        <!-- Cart items -->
+        <div id="cartItems" hidden>
+            <div class="cart-list" id="cartList"></div>
+
+            <!-- Cart summary -->
+            <div class="cart-summary" id="cartSummary">
+                <div class="summary-row">
+                    <span>Items</span>
+                    <span id="summaryCount">0</span>
+                </div>
+                <div class="summary-row">
+                    <span>Total</span>
+                    <strong id="summaryTotal">₹0</strong>
+                </div>
+                <div class="summary-row savings">
+                    <span>🎉 You saved</span>
+                    <span id="summarySaved">₹0</span>
+                </div>
+                <button class="place-order-btn" id="placeOrderBtn" type="button">
+                    Place Order →
+                </button>
+                <p class="payment-note">💳 Payment on delivery (COD)</p>
+            </div>
+        </div>
+
+        <!-- Login prompt for cart -->
+        <div class="login-prompt" id="cartLoginPrompt" hidden>
+            <p>Please <a href="/login?next=/orders">log in</a> to view your cart.</p>
+        </div>
+
+    </section>
+
+    <!-- ===== HISTORY TAB ===== -->
+    <section id="historySection" hidden>
+
+        <div class="loading-state" id="historyLoading">
+            <div class="spinner"></div>
+            <p>Loading orders…</p>
+        </div>
+
+        <div class="empty-state" id="historyEmpty" hidden>
+            <div class="empty-icon">📦</div>
+            <h2>No orders yet</h2>
+            <p>Place your first order from the cart tab above.</p>
+        </div>
+
+        <div class="order-list" id="orderList" hidden></div>
+
+        <div class="login-prompt" id="historyLoginPrompt" hidden>
+            <p>Please <a href="/login?next=/orders">log in</a> to view your orders.</p>
+        </div>
+    </section>
+
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<!-- Order placed success modal -->
+<div class="modal-overlay" id="successModal" hidden>
+    <div class="modal-box">
+        <div class="modal-icon">🎉</div>
+        <h2>Order Placed!</h2>
+        <p id="modalMsg">Your order has been placed successfully.</p>
+        <div class="modal-actions">
+            <button class="btn-primary-lg" id="modalViewOrders" type="button">View Orders</button>
+            <a href="/" class="btn-secondary-lg">Continue Shopping</a>
+        </div>
+    </div>
+</div>
+
+<script src="common.js"></script>
+<script src="orders.js"></script>
+</body>
+</html>
