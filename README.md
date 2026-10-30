@@ -1,225 +1,259 @@
-# AI Interactive Bargaining & Dynamic Clearance Engine
+# 🛍️ AI E-Commerce Bargaining & Dynamic Clearance Engine
 
-A Flask backend for an e-commerce store where:
+An AI-powered Flask e-commerce backend where customers can **bargain in natural language** (Hindi, English, Hinglish) and prices **adjust automatically** based on inventory pressure.
 
-- **Prices adjust automatically** based on inventory pressure (overstock, aging stock, slow sales, expiry), and
-- **Customers can bargain in natural language** (English, Hindi or Hinglish) with an AI-powered seller.
-
-The most important design rule: **the LLM never decides a price.** A deterministic rule engine makes every pricing decision. Gemini is only used to *understand* what the customer wrote and to *word* the seller's reply.
+> **Key design rule:** The LLM never decides a price. A deterministic rule engine makes every pricing decision. Groq AI is only used to *understand* what the customer wrote and to *word* the seller's reply.
 
 ---
 
-## Features
+## ✨ Features
 
-### Dynamic clearance engine
-- Scores every product with a **pressure score (0 to 1)** from five signals:
-  - **Days of cover** (stock ÷ daily sales), so stock is judged against sales speed
-  - **Inventory age**
-  - **Demand level** (HIGH / MEDIUM / LOW)
-  - **Sales trend** (last 7 days vs 30-day average)
-  - **Expiry urgency**
-- No discount while the product is healthy (pressure below 0.20).
-- Discount grows with pressure, capped at **50%**.
-- Products within 7 days of expiry are forced into high-pressure clearance.
-- Price never goes below **cost price** and never above **base price**.
-- Clearance levels: `NORMAL`, `MEDIUM`, `HIGH`, `URGENT`, `EXTREME`.
+### 🏷️ Dynamic Clearance Engine
+Scores every product with a **pressure score (0–1)** from five signals:
+- **Days of cover** (stock ÷ daily sales)
+- **Inventory age**
+- **Demand level** (HIGH / MEDIUM / LOW)
+- **Sales trend** (last 7 days vs 30-day average)
+- **Expiry urgency**
 
-### Bulk discount
+Rules:
+- No discount while the product is healthy (pressure < 0.20)
+- Discount grows with pressure, capped at **50%**
+- Products within 7 days of expiry → forced high-pressure clearance
+- Price never goes below **cost price** and never above **base price**
+- Clearance levels: `NORMAL` → `MEDIUM` → `HIGH` → `URGENT` → `EXTREME`
+
+### 📦 Bulk Discount
 | Quantity | Discount |
-|---|---|
+|----------|----------|
 | 3+ | 3% |
 | 5+ | 5% |
 | 10+ | 8% |
 
-Applied on top of the clearance price and always protected by the cost-price floor.
+Applied on top of clearance price, always protected by cost-price floor.
 
-### Bargaining (3 rounds)
-- The customer makes offers (as a number or as a chat message).
-- The seller can **ACCEPT**, **COUNTER** or **REJECT**.
-- Offers of at least 80% of the target price get a counter-offer; lower offers are rejected.
-- A seller counter-offer is **binding**: if the customer later offers that amount, it is accepted.
-- Counters never go up compared with an earlier counter.
-- Round 3 is final: an offer at or above the floor is accepted, anything below is rejected and the session closes.
-- On acceptance, **stock is reduced** and the sale is recorded, so the clearance engine keeps learning.
+### 🤝 AI Bargaining (3 Rounds)
+- Customer makes offers via **natural language chat** or direct number
+- Seller can **ACCEPT**, **COUNTER** or **REJECT**
+- Offers ≥ 80% of target price get a counter-offer; lower offers are rejected
+- A counter-offer is **binding** — if customer accepts it later, it is honoured
+- Counters never go *up* compared with an earlier counter
+- Round 3 is final: offer at/above floor is accepted, else session closes
+- On acceptance: stock reduces, sale is recorded, cart item auto-added
 
-### AI chat layer (Gemini)
-`POST /api/bargaining/chat` takes a normal message such as *"bhai 1700 mein de do"* or *"ok deal"* and:
-1. Gemini extracts the intent (`OFFER`, `ACCEPT_COUNTER`, `QUESTION`, `OTHER`) and the amount.
-2. The rule engine decides.
-3. Gemini writes a friendly reply in the **customer's own language**.
+### 🤖 AI Chat Layer (Groq)
+`POST /api/bargaining/chat` takes a natural message like *"bhai 1700 mein de do"* or *"ok deal"* and:
+1. **Groq** extracts intent (`OFFER`, `ACCEPT_COUNTER`, `QUESTION`, `OTHER`) + amount + language
+2. **Rule engine** decides (ACCEPT / COUNTER / REJECT)
+3. **Groq** writes a friendly reply in the customer's own language
 
-Safety measures:
-- Gemini never sees cost price, floor price or target price.
-- Any reply containing an amount that was not provided is discarded and replaced with a template reply.
-- If Gemini is unavailable, a regex fallback and template replies keep the chat working.
-- Customer messages are treated as data, not instructions.
+**Safety measures:**
+- Groq never sees cost price, floor price or target price
+- Any AI reply containing an amount not provided is discarded → template fallback
+- 12-second timeout; regex fallback keeps chat working if Groq is unavailable
+- Customer messages are treated as data, not instructions
 
-### Seller protection
-- Customers never see cost price, minimum price, floor, target price or internal clearance data.
-- Product create / update / delete and clearance data require an **admin key**.
+### 🛒 Cart & Orders
+- Confirmed bargain deals auto-add to cart
+- Customer can also add regular-priced items
+- Place order from cart → order history page
+
+### 📊 Seller Dashboard
+- Stat cards: Confirmed Deals, Active Negotiations, Total Orders, Revenue
+- Full deals table: buyer name/email, product, original price, deal price, savings, rounds used
+- Full orders table: buyer, items, total, time placed
+- Auto-refreshes every 30 seconds
+- Admin-only access
+
+### 🔐 Auth System
+- User registration & login (session cookies)
+- Admin vs Customer roles
+- Login required to start bargaining
 
 ---
 
-## Tech stack
-- Python 3.10+
-- Flask, Flask-SQLAlchemy (SQLite)
-- Google Gemini (`google-genai`)
-- `python-dotenv`
-
----
-
-## Project structure
+## 🗂️ Project Structure
 
 ```
-backend/
-├── app.py                      # Flask app, blueprint registration
-├── seed.py                     # Sample products
-├── models/
-│   ├── product.py              # Product + db instance
-│   ├── bargaining_session.py   # Bargaining session
-│   └── offer.py                # Offer history (unique per session + round)
-├── routes/
-│   ├── product_routes.py       # Product CRUD (admin protected for writes)
-│   ├── clearance_routes.py     # Clearance data (admin only)
-│   └── offer_routes.py         # Start, offer, chat, session history
-└── services/
-    ├── clearance_engine.py     # Pressure score and clearance price
-    ├── pricing_engine.py       # Bulk discount and cost protection
-    ├── bargaining_service.py   # ACCEPT / COUNTER / REJECT logic
-    ├── ai_negotiator.py        # Gemini: understand message, write reply
-    └── security.py             # Admin key check
+ai-ecommerce-bargaining-engine/
+├── backend/
+│   ├── app.py                    # Flask app, blueprint registration, page routes
+│   ├── seed.py                   # Sample product data
+│   ├── config.py                 # App configuration
+│   ├── models/
+│   │   ├── product.py            # Product + db instance
+│   │   ├── bargaining_session.py # Bargaining session state
+│   │   ├── offer.py              # Offer history per session
+│   │   ├── user.py               # User (customer / admin)
+│   │   ├── cart.py               # Cart items
+│   │   └── order.py              # Orders & order items
+│   ├── routes/
+│   │   ├── auth_routes.py        # /api/auth — register, login, logout, me
+│   │   ├── product_routes.py     # /api/products — CRUD
+│   │   ├── offer_routes.py       # /api/bargaining — start, offer, chat, confirm
+│   │   ├── clearance_routes.py   # /api/clearance — clearance data (admin)
+│   │   ├── cart_routes.py        # /api/cart — cart & place order
+│   │   └── seller_routes.py      # /api/seller — dashboard, deals, orders
+│   └── services/
+│       ├── clearance_engine.py   # Pressure score & clearance price
+│       ├── pricing_engine.py     # Bulk discount & cost protection
+│       ├── bargaining_service.py # ACCEPT / COUNTER / REJECT logic
+│       ├── ai_negotiator.py      # Groq: understand message, write reply
+│       └── security.py           # Auth decorators, session helpers
+└── frontend/
+    ├── index.html / style.css / script.js    # Product catalog
+    ├── bargain.html / bargain.css / bargain.js # Bargaining chat UI
+    ├── login.html / login.css / login.js      # Auth pages
+    ├── admin.html / admin.css                 # Admin product panel
+    ├── orders.html / orders.css / orders.js   # Customer orders
+    ├── seller.html / seller.css / seller.js   # Seller dashboard
+    └── common.js                              # Shared navbar, cart badge
 ```
 
 ---
 
-## Setup
+## 🚀 Setup
 
-### 1. Install
+### 1. Clone & Install
 ```bash
+git clone <repo-url>
+cd ai-ecommerce-bargaining-engine
+
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Mac / Linux
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # Mac / Linux
+
 pip install -r requirements.txt
 ```
 
-`requirements.txt` must include `flask`, `flask-sqlalchemy`, `google-genai` and `python-dotenv`.
-
-### 2. Create a `.env` file in the project root
-```
-GEMINI_API_KEY=your-gemini-key
-GEMINI_MODEL=your-gemini-model-name
+### 2. Create `.env` in project root
+```env
+GROQ_API_KEY=gsk_your_groq_key_here
+GROQ_MODEL=qwen/qwen3.8-27b
 ADMIN_KEY=a-long-random-secret
 ```
-Get a Gemini key at https://aistudio.google.com/apikey. **Never commit `.env`**; make sure `.gitignore` contains `.env` and `*.db`.
 
-### 3. Create the database and sample data
+Get a free Groq API key at **https://console.groq.com** → API Keys.
+
+> ⚠️ Never commit `.env` — it is already in `.gitignore`.
+
+### 3. Seed the database
 ```bash
 python -m backend.seed
 ```
 
 ### 4. Run
 ```bash
-python -m backend.app
+python -m flask --app backend.app run --debug
 ```
-The server starts at `http://127.0.0.1:5000`.
+
+Server starts at → **http://127.0.0.1:5000**
 
 ---
 
-## API reference
+## 🗺️ Pages
 
-Admin requests must send the header `X-Admin-Key: <ADMIN_KEY>`.
+| URL | Page |
+|-----|------|
+| `/` | Product Catalog |
+| `/bargain?product=<id>` | AI Bargaining Chat |
+| `/login` | Login / Register |
+| `/admin` | Admin Product Panel |
+| `/orders` | Customer Order History |
+| `/seller` | Seller Dashboard |
 
-### Customer endpoints
+---
+
+## 📡 API Reference
+
+> Admin requests require login as `role=admin` **or** the header `X-Admin-Key: <ADMIN_KEY>`.
+
+### Customer Endpoints
 
 | Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/products` | Product list (id, name, category, base_price, stock only) |
-| POST | `/api/bargaining/start` | Start a session `{ "product_id": 1, "quantity": 1 }` |
-| POST | `/api/bargaining/offer` | Submit a numeric offer `{ "session_id": 1, "customer_offer": 1700 }` (**total** price) |
-| POST | `/api/bargaining/chat` | Chat message `{ "session_id": 1, "message": "1700 mein de do" }` |
-| GET | `/api/bargaining/session/<id>` | Session status and round history |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register `{ name, email, password }` |
+| POST | `/api/auth/login` | Login `{ email, password }` |
+| POST | `/api/auth/logout` | Logout |
+| GET | `/api/auth/me` | Current user info |
+| GET | `/api/products` | Product list (public fields only) |
+| POST | `/api/bargaining/start` | Start session `{ product_id, quantity }` |
+| POST | `/api/bargaining/offer` | Numeric offer `{ session_id, customer_offer }` |
+| POST | `/api/bargaining/chat` | Chat message `{ session_id, message }` |
+| POST | `/api/bargaining/confirm` | Confirm a deal `{ session_id }` |
+| GET | `/api/bargaining/session/<id>` | Session status & round history |
+| GET | `/api/cart` | View cart |
+| POST | `/api/cart/add` | Add item to cart |
+| DELETE | `/api/cart/<id>` | Remove cart item |
+| POST | `/api/cart/place-order` | Place order from cart |
+| GET | `/api/orders` | Customer order history |
 
-### Admin endpoints (`X-Admin-Key` required)
+### Admin Endpoints
 
 | Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/products` | Full product data including cost, minimum price, sales |
-| POST | `/api/products` | Add a product |
-| PUT | `/api/products/<id>` | Update a product |
-| DELETE | `/api/products/<id>` | Delete a product |
-| GET | `/api/clearance/<id>` | Clearance price, level, pressure scores, days of cover, reasons |
-| POST | `/api/bargaining/offer` | Response additionally includes the `pricing` breakdown (target, floor, cost) |
-| GET | `/api/bargaining/session/<id>` | Product block additionally includes cost and minimum price |
-
-Product validation: `cost_price <= minimum_price <= base_price`, non-negative stock and sales, `demand_level` one of `LOW`, `MEDIUM`, `HIGH`.
-
----
-
-## Example flow
-
-```http
-POST /api/bargaining/start
-{ "product_id": 1, "quantity": 1 }
-
-POST /api/bargaining/chat
-{ "session_id": 1, "message": "bhai 1700 mein de do" }
-```
-```json
-{
-  "decision": "COUNTER",
-  "counter_price": 1850.0,
-  "reply": "Namaste! ₹1700 thoda kam hai, lekin main ₹1850 mein de sakta hoon.",
-  "session_status": "ACTIVE",
-  "round_number": 1
-}
-```
-```http
-POST /api/bargaining/chat
-{ "session_id": 1, "message": "ok deal" }
-```
-```json
-{
-  "decision": "ACCEPT",
-  "final_price": 1850.0,
-  "session_status": "ACCEPTED"
-}
-```
+|--------|----------|-------------|
+| GET | `/api/products` | Full product data (cost, minimum price, sales) |
+| POST | `/api/products` | Add product |
+| PUT | `/api/products/<id>` | Update product |
+| DELETE | `/api/products/<id>` | Delete product |
+| GET | `/api/clearance/<id>` | Clearance price, level, pressure scores |
+| GET | `/api/seller/dashboard` | Summary stats |
+| GET | `/api/seller/deals` | All confirmed bargaining deals |
+| GET | `/api/seller/orders` | All placed orders |
 
 ---
 
-## How a price is decided
+## 🧠 How a Price is Decided
 
 ```
-Product data -> clearance_engine -> clearance price
-             -> pricing_engine   -> bulk discount, cost protection
-             -> bargaining_service -> ACCEPT / COUNTER / REJECT
-             -> ai_negotiator    -> friendly reply (words only, no prices decided)
+Customer offer
+    │
+    ▼
+clearance_engine  →  clearance price (based on stock pressure)
+    │
+    ▼
+pricing_engine    →  bulk discount + cost-price floor
+    │
+    ▼
+bargaining_service →  ACCEPT / COUNTER / REJECT
+    │
+    ▼
+ai_negotiator     →  friendly reply in customer's language
+                      (Groq only words the reply — no price decisions)
 ```
 
-- **Floor price:** the total minimum price in normal conditions; the total **cost price** when clearance pushes the price below the normal minimum.
-- **Target price:** the higher of the discounted bulk price and the floor. An offer at or above it is accepted **at the target price**, never above it.
+- **Floor price** = total cost price (seller never loses money)
+- **Target price** = discounted price the seller is happy to accept
+- **Counter price** = midpoint between target and customer's offer
 
 ---
 
-## Security notes
-- Keep `.env` out of git. If a key was ever committed, regenerate it.
-- Customer responses never include cost, floor, target or internal clearance data.
-- The admin key is a simple shared secret, suitable for a demo or project. Use proper authentication for production.
-- Customer offers are **total** prices for the whole quantity. In chat, an amount is treated as per-unit unless the customer says "total".
+## 🔒 Security Notes
+
+- Keep `.env` out of git. If a key was ever committed, regenerate it immediately.
+- Customer API responses never include cost, floor, target or clearance internals.
+- Session ownership is enforced — users cannot submit offers on another user's session.
+- The `ADMIN_KEY` is a simple shared secret, suitable for demos. Use proper OAuth for production.
 
 ---
 
-## Known limitations
-- Active bargaining sessions never expire.
-- `seasonal_factor` is stored but not yet used in clearance scoring.
-- Money values use `Float`; use `Numeric` for real payments.
-- Accepting a deal reduces stock but does not create an order or payment.
+## ⚙️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.10+, Flask, Flask-SQLAlchemy |
+| Database | SQLite (via SQLAlchemy ORM) |
+| AI | Groq API (`qwen/qwen3.8-27b`) |
+| Auth | Flask sessions (signed cookies) |
+| Frontend | Vanilla HTML, CSS, JavaScript |
+| Config | python-dotenv |
 
 ---
 
-## Roadmap
-- Seller dashboard APIs (summary, clearance overview, sessions and profit)
-- Customer chat frontend and seller dashboard UI
-- Session expiry
-- Use `seasonal_factor` in clearance scoring
-- Orders and payments
+## 🛣️ Known Limitations / Future Work
+
+- Active bargaining sessions never expire (session cleanup not implemented)
+- `seasonal_factor` is stored but not yet used in clearance scoring
+- Money values use `Float`; use `Numeric` for real payment systems
+- Payment integration (Razorpay / Stripe) not yet implemented
+- Product images are served from local `/images/` folder (no upload UI)
