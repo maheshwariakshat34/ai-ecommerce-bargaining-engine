@@ -75,7 +75,7 @@ def create_app():
 
     @app.route("/admin")
     def admin():
-        return send_from_directory(FRONTEND_DIR, "admin.html")
+        return send_from_directory(FRONTEND_DIR, "seller.html")
 
 
     @app.route("/seller")

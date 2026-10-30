@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Seller Dashboard</title>
+  <title>Seller Dashboard | SmartShop</title>
   <link rel="stylesheet" href="seller.css" />
 </head>
 <body>
 
 <!-- NAV -->
 <nav class="navbar">
-  <a class="brand" href="/">🛍️ SmartShop</a>
+  <a class="brand" href="/">🛍️ SmartShop <span style="font-size:0.75rem;opacity:0.8;font-weight:400;margin-left:6px">Seller Central</span></a>
   <div class="nav-links">
-    <a href="/">Products</a>
-    <a href="/admin">Admin</a>
-    <a href="/seller" class="active">Dashboard</a>
-    <a href="/orders">My Orders</a>
+    <a href="/">Store</a>
+    <a href="/seller" class="active">Seller Dashboard</a>
+    <a href="/orders">Customer Orders</a>
+    <button class="nav-logout" onclick="logoutSeller()">Log out</button>
   </div>
 </nav>
 
@@ -23,8 +23,8 @@
 
   <!-- HEADER -->
   <div class="dash-header">
-    <h1>📊 Seller Dashboard</h1>
-    <p class="subtitle">Real-time deals, orders and revenue at a glance</p>
+    <h1>📊 Seller &amp; Inventory Hub</h1>
+    <p class="subtitle">Real-time bargaining deals, customer orders, and product pricing controls in one place</p>
   </div>
 
   <!-- STAT CARDS -->
@@ -53,11 +53,12 @@
 
   <!-- TABS -->
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('deals')">🤝 Bargaining Deals</button>
-    <button class="tab-btn" onclick="switchTab('orders')">📦 Orders</button>
+    <button class="tab-btn active" id="tabBtnDeals" onclick="switchTab('deals')">🤝 Bargaining Deals</button>
+    <button class="tab-btn" id="tabBtnOrders" onclick="switchTab('orders')">📦 Placed Orders</button>
+    <button class="tab-btn" id="tabBtnProducts" onclick="switchTab('products')">🏷️ Products &amp; Pricing</button>
   </div>
 
-  <!-- DEALS TABLE -->
+  <!-- TAB 1: DEALS TABLE -->
   <div id="tabDeals" class="tab-pane active">
     <div class="table-header">
       <h2>Confirmed Bargaining Deals</h2>
@@ -86,10 +87,10 @@
     </div>
   </div>
 
-  <!-- ORDERS TABLE -->
+  <!-- TAB 2: ORDERS TABLE -->
   <div id="tabOrders" class="tab-pane hidden">
     <div class="table-header">
-      <h2>All Orders</h2>
+      <h2>All Customer Orders</h2>
       <button class="refresh-btn" onclick="loadOrders()">🔄 Refresh</button>
     </div>
     <div class="table-wrap">
@@ -112,6 +113,58 @@
     </div>
   </div>
 
+  <!-- TAB 3: PRODUCTS & INVENTORY TABLE -->
+  <div id="tabProducts" class="tab-pane hidden">
+    <div class="table-header">
+      <div>
+        <h2 style="display:inline-block;margin-right:10px">Product Inventory &amp; Dynamic Clearance</h2>
+        <span class="muted" id="prodCount">0 products</span>
+      </div>
+      <div>
+        <button class="btn-primary" onclick="openProductModal(null)">+ Add Product</button>
+        <button class="refresh-btn" onclick="loadProducts()">🔄 Refresh</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="productsTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Base</th>
+            <th>Cost Price</th>
+            <th>Min Price</th>
+            <th>Stock</th>
+            <th>Expiry</th>
+            <th>Clearance Price</th>
+            <th>Discount</th>
+            <th>Pressure Level</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="productsTbody">
+          <tr><td colspan="11" class="loading">Loading products…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ADD / EDIT PRODUCT MODAL -->
+<div class="modal-overlay" id="productModal" hidden>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modalTitle">Edit Product</h3>
+      <button class="close-btn" onclick="closeProductModal()">✕</button>
+    </div>
+    <div class="form-grid" id="productForm"></div>
+    <p class="form-error" id="formError"></p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeProductModal()">Cancel</button>
+      <button class="btn-save" id="saveProdBtn" onclick="saveProduct()">Save Product</button>
+    </div>
+  </div>
 </div>
 
 <script src="seller.js"></script>

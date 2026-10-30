@@ -232,20 +232,40 @@ function showUser() {
         ? "You are browsing as a guest."
         : "Signed in as " + currentUser.name + (currentUser.role === "admin" ? " (seller)" : "");
 
-    // the seller gets a link to the dashboard
-    let dashboard = $("dashboardBtn");
+    // the seller gets links to the dashboard and admin panel
+    let sellerLink = $("sellerNavBtn");
+    let mainNav = $("mainNav");
 
-    if (currentUser.role === "admin" && !dashboard) {
-        dashboard = document.createElement("button");
-        dashboard.type = "button";
-        dashboard.id = "dashboardBtn";
-        dashboard.textContent = "Seller dashboard";
-        dashboard.addEventListener("click", function () {
-            window.location.assign("/admin");
-        });
-        $("userDropdown").insertBefore(dashboard, $("authBtn"));
-    } else if (currentUser.role !== "admin" && dashboard) {
-        dashboard.remove();
+    if (currentUser.role === "admin") {
+        if (!sellerLink && mainNav) {
+            sellerLink = document.createElement("a");
+            sellerLink.href = "/seller";
+            sellerLink.id = "sellerNavBtn";
+            sellerLink.style.color = "#f59e0b";
+            sellerLink.style.fontWeight = "bold";
+            sellerLink.textContent = "📊 Seller Dashboard";
+            mainNav.appendChild(sellerLink);
+        }
+
+        let dashboard = $("dashboardBtn");
+        if (!dashboard) {
+            dashboard = document.createElement("button");
+            dashboard.type = "button";
+            dashboard.id = "dashboardBtn";
+            dashboard.textContent = "📊 Seller Dashboard";
+            dashboard.addEventListener("click", function () {
+                window.location.assign("/seller");
+            });
+            $("userDropdown").insertBefore(dashboard, $("authBtn"));
+        }
+
+
+    } else {
+        if (sellerLink) sellerLink.remove();
+        let dashboard = $("dashboardBtn");
+        if (dashboard) dashboard.remove();
+        let adminBtn = $("adminPanelBtn");
+        
     }
 }
 

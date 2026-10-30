@@ -1,7 +1,7 @@
 """
 Seller Dashboard API Routes
 GET /api/seller/dashboard  — summary stats
-GET /api/seller/deals      — all confirmed bargaining deals
+GET /api/seller/deals      — all confirmed/accepted bargaining deals
 GET /api/seller/orders     — all placed orders
 """
 
@@ -15,6 +15,8 @@ from backend.models.product import Product
 from sqlalchemy import func
 
 seller_bp = Blueprint("seller", __name__, url_prefix="/api/seller")
+
+DEAL_STATUSES = ["ACCEPTED", "CONFIRMED"]
 
 
 # ── helper ──────────────────────────────────────────────────────────────────
@@ -31,17 +33,21 @@ def _user_info(user_id):
 @seller_bp.get("/dashboard")
 @admin_required
 def dashboard():
-    total_deals = BargainingSession.query.filter_by(status="CONFIRMED").count()
+    total_deals = (
+        BargainingSession.query
+        .filter(BargainingSession.status.in_(DEAL_STATUSES))
+        .count()
+    )
     active_sessions = BargainingSession.query.filter_by(status="ACTIVE").count()
     total_orders = Order.query.count()
     total_revenue = db.session.query(func.sum(Order.total)).scalar() or 0.0
 
-    # Revenue from bargained deals (final_price * quantity)
+    # Revenue from bargained deals
     deal_revenue = (
         db.session.query(
-            func.sum(BargainingSession.final_price * BargainingSession.quantity)
+            func.sum(BargainingSession.final_price)
         )
-        .filter(BargainingSession.status == "CONFIRMED")
+        .filter(BargainingSession.status.in_(DEAL_STATUSES))
         .scalar()
         or 0.0
     )
@@ -61,7 +67,7 @@ def dashboard():
 def deals():
     sessions = (
         BargainingSession.query
-        .filter_by(status="CONFIRMED")
+        .filter(BargainingSession.status.in_(DEAL_STATUSES))
         .order_by(BargainingSession.id.desc())
         .all()
     )
@@ -70,19 +76,29 @@ def deals():
     for s in sessions:
         product = db.session.get(Product, s.product_id)
         user = _user_info(s.user_id)
+
+        qty = max(s.quantity, 1)
+        total_deal_price = round(float(s.final_price or 0), 2)
+        unit_deal_price = round(total_deal_price / qty, 2)
+
+        base_unit_price = round(float(product.base_price if product else 0), 2)
+        original_total = round(base_unit_price * qty, 2)
+        saved = round(max(original_total - total_deal_price, 0), 2)
+
         result.append({
-            "session_id":    s.id,
-            "product_id":    s.product_id,
-            "product_name":  product.name if product else f"Product #{s.product_id}",
-            "quantity":      s.quantity,
-            "final_price":   round(float(s.final_price or 0), 2),
-            "total_value":   round(float((s.final_price or 0) * s.quantity), 2),
-            "original_price": round(float(product.price if product else 0), 2),
-            "saved":         round(float(((product.price if product else 0) - (s.final_price or 0)) * s.quantity), 2),
-            "rounds_used":   s.current_round,
-            "max_rounds":    s.max_rounds,
-            "buyer_name":    user["name"],
-            "buyer_email":   user["email"],
+            "session_id":     s.id,
+            "product_id":     s.product_id,
+            "product_name":   product.name if product else f"Product #{s.product_id}",
+            "quantity":       s.quantity,
+            "final_price":    unit_deal_price,
+            "total_value":    total_deal_price,
+            "original_price": base_unit_price,
+            "saved":          saved,
+            "rounds_used":    s.current_round,
+            "max_rounds":     s.max_rounds,
+            "buyer_name":     user["name"],
+            "buyer_email":    user["email"],
+            "status":         s.status,
         })
 
     return jsonify(result)
