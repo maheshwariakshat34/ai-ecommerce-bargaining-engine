@@ -37,7 +37,7 @@ def init_auth(app):
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     # BUG 7 FIX: require HTTPS for session cookies in production
-    app.config["SESSION_COOKIE_SECURE"] = not app.debug
+    app.config["SESSION_COOKIE_SECURE"] = os.getenv("USE_HTTPS", "").lower() == "true"
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 

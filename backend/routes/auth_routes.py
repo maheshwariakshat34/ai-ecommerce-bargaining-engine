@@ -103,13 +103,8 @@ def login():
         _fails.setdefault(key, []).append(time.time())
         return jsonify({"error": "Wrong email or password."}), 401
 
-    if wanted_role in ("user", "admin") and wanted_role != user.role:
-        message = (
-            "This is a seller account. Please use the Seller tab."
-            if user.role == "admin"
-            else "This is not a seller account."
-        )
-        return jsonify({"error": message}), 403
+    if wanted_role == "admin" and user.role != "admin":
+        return jsonify({"error": "This is not a seller account."}), 403
 
     _fails.pop(key, None)
     _log_in(user)

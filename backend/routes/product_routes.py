@@ -254,10 +254,10 @@ def delete_product(product_id):
         db.session.delete(product)
         db.session.commit()
     except IntegrityError:
-        # FIX: product still referenced by bargaining sessions / offers
+
         db.session.rollback()
         return jsonify({
             "message": "Cannot delete product: it has bargaining sessions or offers."
         }), 409
 
-    return jsonify({"message": "Product deleted successfully"}), 200  # BUG 5 FIX: explicit status code
+    return jsonify({"message": "Product deleted successfully"}), 200

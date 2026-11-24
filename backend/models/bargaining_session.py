@@ -10,7 +10,7 @@ class BargainingSession(db.Model):
         primary_key=True
     )
 
-    # BUG 15 FIX: tie session to the user who created it so other users
+
     # cannot submit offers or confirm deals on someone else's session.
     user_id = db.Column(
         db.Integer,
@@ -52,7 +52,7 @@ class BargainingSession(db.Model):
         nullable=True
     )
 
-    # BUG 4/8 FIX: tracks whether a CONFIRM is pending so process_offer()
+
     # can block new offers until the customer confirms or the session closes.
     confirming = db.Column(
         db.Boolean,
@@ -72,4 +72,4 @@ class BargainingSession(db.Model):
             "status": self.status,
             "final_price": self.final_price,
             "confirming": self.confirming
-        }
+        }

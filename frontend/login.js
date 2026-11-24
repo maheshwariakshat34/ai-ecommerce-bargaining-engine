@@ -18,7 +18,7 @@ function landingFor(user, next) {
     const sellerPage = target && /^\/admin/.test(target);
 
     if (target && (user.role === "admin" || !sellerPage)) return target;
-    return user.role === "admin" ? "/admin" : "/";
+    return user.role === "admin" ? "/seller" : "/";
 }
 
 function showError(message) {

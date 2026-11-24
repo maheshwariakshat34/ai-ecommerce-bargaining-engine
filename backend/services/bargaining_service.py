@@ -72,14 +72,7 @@ def process_offer(session_id, customer_offer):
     quantity = session.quantity
     current_round = session.current_round
 
-    # Final round and a price is already waiting for the customer to confirm:
-    # no round is left, so the only thing left to do is confirm it.
-    # BUG 8 FIX: drop the round_number equality check. The CONFIRM offer is stored
-    # at round N, but current_round was already bumped to N+1, so the old guard
-    # (waiting.round_number == session.max_rounds) never matched, allowing a free
-    # extra round. Now any pending counter price blocks a new offer.
-    # BUG 4 FIX: also block when a CONFIRM was issued in a non-final round
-    # (session.confirming == True) so the customer cannot slip in a new offer.
+
     if session.confirming:
         waiting = get_last_counter_offer(session.id)
         return {
@@ -91,7 +84,7 @@ def process_offer(session_id, customer_offer):
         }, 409
 
     if current_round > session.max_rounds:
-        # BUG 2 FIX: extra round was somehow reached with no pending counter.
+
         # Block it cleanly rather than letting an extra free offer through.
         return {
             "error": "No more rounds available. This negotiation has ended.",
@@ -190,7 +183,7 @@ def process_offer(session_id, customer_offer):
         # Start from the seller's last price (target first, then the previous counter)
         # so the seller moves towards the customer every round.
         reference = previous_counter if previous_counter is not None else target_price
-        # BUG 5 FIX: round reference to 2dp for stable float comparison
+
         reference = round(float(reference), 2)
         counter_price = max(negotiation_floor, (customer_offer + reference) / 2)
         # Whole rupees, rounded up, so the customer sees a clean number
@@ -222,7 +215,7 @@ def process_offer(session_id, customer_offer):
 
     if decision == "CONFIRM":
         # Nothing is sold yet. Set confirming=True so no new offer can bypass
-        # this pending price (BUG 4 FIX). Only bump the round in non-final rounds.
+
         session.confirming = True
         if not is_final_round:
             session.current_round += 1
