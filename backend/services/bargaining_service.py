@@ -4,12 +4,15 @@ The rule engine (not the AI) decides every price.
 """
 
 import math
+from datetime import datetime, timedelta
 
+from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
 from backend.models.product import Product, db
 from backend.models.bargaining_session import BargainingSession
 from backend.models.offer import Offer
+from backend.models.bargaining_rate_limit import BargainingRateLimit
 from backend.services.pricing_engine import calculate_pricing
 
 # In clearance mode the floor is the cost price. Keep a small margin above it
@@ -21,6 +24,87 @@ SAFETY_MARGIN = 0.02
 # there was none). 0 = accept anything above the floor (old behaviour),
 # 1 = the customer must meet the seller's last price.
 FINAL_ROUND_ACCEPT_SHARE = 0.5
+
+
+def is_session_expired(session):
+    """Return True if the session is no longer usable."""
+    if session.status != "ACTIVE":
+        return True
+    if session.expires_at is None:
+        return False
+    return datetime.utcnow() > session.expires_at
+
+
+def refresh_session_activity(session):
+    """Extend expiry after any valid customer action."""
+    timeout = current_app.config.get("BARGAINING_SESSION_TIMEOUT_MINUTES", 15)
+    now = datetime.utcnow()
+    session.last_activity_at = now
+    session.expires_at = now + timedelta(minutes=timeout)
+    return session
+
+
+def expire_session(session):
+    """Mark an active session as expired."""
+    session.status = "EXPIRED"
+    session.last_activity_at = datetime.utcnow()
+    return session
+
+
+def check_rate_limit(user_id, product_id):
+    """
+    Return (allowed: bool, message: str).
+    Skipped for guests (user_id is None).
+    Enforces daily session count + cooling-off between sessions.
+    """
+    if user_id is None:
+        return True, ""
+    today = datetime.utcnow().date()
+    max_sessions = current_app.config.get("RATE_LIMIT_SESSIONS_PER_DAY", 3)
+    cooling_off = current_app.config.get("COOLING_OFF_MINUTES", 10)
+    record = BargainingRateLimit.query.filter_by(
+        user_id=user_id,
+        product_id=product_id,
+        date=today,
+    ).first()
+    if record is None:
+        return True, ""
+    if record.session_count >= max_sessions:
+        return False, (
+            f"Aap aaj is product par {max_sessions} baar bargain kar chuke ho. "
+            "Kal dobara try karo."
+        )
+    if record.last_session_at:
+        elapsed = (datetime.utcnow() - record.last_session_at).total_seconds() / 60
+        if elapsed < cooling_off:
+            remaining = int(cooling_off - elapsed) + 1
+            return False, f"Thoda wait karo. {remaining} minute baad dobara try karo."
+    return True, ""
+
+
+def record_session_start(user_id, product_id):
+    """Increment today's session counter for this user+product. Skipped for guests."""
+    if user_id is None:
+        return
+    today = datetime.utcnow().date()
+    record = BargainingRateLimit.query.filter_by(
+        user_id=user_id,
+        product_id=product_id,
+        date=today,
+    ).first()
+    if record is None:
+        record = BargainingRateLimit(
+            user_id=user_id,
+            product_id=product_id,
+            date=today,
+            session_count=1,
+            last_session_at=datetime.utcnow(),
+        )
+        db.session.add(record)
+    else:
+        record.session_count += 1
+        record.last_session_at = datetime.utcnow()
+    db.session.commit()
 
 
 def get_last_counter_offer(session_id):

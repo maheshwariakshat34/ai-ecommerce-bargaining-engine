@@ -2,6 +2,8 @@ python-dotenv==1.2.4
 SQLAlchemy==2.0.51
 Flask==3.1.2
 Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.1.0
 google-genai==2.31.0
-groq
+groq==1.7.0
+pytest==8.3.5
 

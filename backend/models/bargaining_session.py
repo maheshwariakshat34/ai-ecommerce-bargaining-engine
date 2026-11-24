@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from backend.models.product import db
 
 
@@ -60,6 +61,10 @@ class BargainingSession(db.Model):
         default=False
     )
 
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_activity_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=True)
+
     def to_dict(self):
 
         return {
@@ -71,5 +76,8 @@ class BargainingSession(db.Model):
             "max_rounds": self.max_rounds,
             "status": self.status,
             "final_price": self.final_price,
-            "confirming": self.confirming
+            "confirming": self.confirming,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_activity_at": self.last_activity_at.isoformat() if self.last_activity_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None
         }

@@ -7,6 +7,7 @@ from backend.config import Config
 from backend.models.product import db
 from backend.models.offer import Offer
 from backend.models.bargaining_session import BargainingSession
+from backend.models.bargaining_rate_limit import BargainingRateLimit
 from backend.models.cart import CartItem
 from backend.models.order import Order, OrderItem
 
@@ -18,6 +19,7 @@ from backend.routes.seller_routes import seller_bp
 from backend.models.user import User
 from backend.routes.auth_routes import auth_bp
 from backend.services.security import init_auth
+from flask_migrate import Migrate
 
 
 FRONTEND_DIR = os.path.join(
@@ -38,6 +40,7 @@ def create_app():
     app.config.from_object(Config)
     init_auth(app)
     db.init_app(app)
+    Migrate(app, db)
 
     # Bargaining routes  — /api/bargaining/start | /offer | /chat | /confirm | /session/<id>
     app.register_blueprint(offer_bp)

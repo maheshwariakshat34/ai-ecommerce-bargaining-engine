@@ -10,6 +10,11 @@ from backend.services.bargaining_service import (
     process_offer,
     confirm_deal,
     get_last_counter,
+    is_session_expired,
+    refresh_session_activity,
+    expire_session,
+    check_rate_limit,
+    record_session_start,
 )
 from backend.services.ai_negotiator import understand_message, write_reply
 from backend.services.security import bargaining_login_required, is_admin, current_user
@@ -60,6 +65,12 @@ def start_bargaining():
     if product.days_to_expiry is not None and product.days_to_expiry <= 0:
         return jsonify({"error": "This product has expired and cannot be sold."}), 400
 
+    user = current_user()
+    user_id = user.id if user else None
+    allowed, rate_msg = check_rate_limit(user_id, product_id)
+    if not allowed:
+        return jsonify({"error": rate_msg, "rate_limited": True}), 429
+
     session = BargainingSession(
         product_id=product.id,
         quantity=quantity,
@@ -71,6 +82,10 @@ def start_bargaining():
     )
 
     db.session.add(session)
+    db.session.commit()
+
+    record_session_start(user_id, product_id)
+    refresh_session_activity(session)
     db.session.commit()
 
     return jsonify({
@@ -113,7 +128,21 @@ def submit_offer():
         if caller is None or (caller.id != session_obj.user_id and not is_admin()):
             return jsonify({"error": "This session does not belong to you."}), 403
 
+    if session_obj and is_session_expired(session_obj):
+        if session_obj.status == "ACTIVE":
+            expire_session(session_obj)
+            db.session.commit()
+        return jsonify({
+            "error": "Ye bargaining session expire ho gaya. Naya session shuru karo.",
+            "session_status": "EXPIRED",
+            "session_expired": True,
+        }), 410
+
     payload, status = process_offer(session_id, customer_offer)
+
+    if session_obj:
+        refresh_session_activity(session_obj)
+        db.session.commit()
 
     # Customers must never see cost, floor or target price
     if not is_admin():
@@ -141,6 +170,16 @@ def confirm_bargaining():
         caller = current_user()
         if caller is None or (caller.id != session_obj.user_id and not is_admin()):
             return jsonify({"error": "This session does not belong to you."}), 403
+
+    if session_obj and is_session_expired(session_obj):
+        if session_obj.status == "ACTIVE":
+            expire_session(session_obj)
+            db.session.commit()
+        return jsonify({
+            "error": "Ye bargaining session expire ho gaya. Naya session shuru karo.",
+            "session_status": "EXPIRED",
+            "session_expired": True,
+        }), 410
 
     payload, status = confirm_deal(session_id)
 
@@ -224,6 +263,17 @@ def bargaining_chat():
             "understood": parsed
         }), 200
 
+    # Expiry check
+    if is_session_expired(session):
+        if session.status == "ACTIVE":
+            expire_session(session)
+            db.session.commit()
+        return jsonify({
+            "error": "Ye bargaining session expire ho gaya. Naya session shuru karo.",
+            "session_status": "EXPIRED",
+            "session_expired": True,
+        }), 410
+
     # 2. Work out the TOTAL offer amount (rule engine works on totals)
     customer_offer = None
 
@@ -277,6 +327,10 @@ def bargaining_chat():
         return jsonify({"error": "Could not understand a valid price."}), 400
 
     result, status = process_offer(session.id, customer_offer)
+
+    if status == 200:
+        refresh_session_activity(session)
+        db.session.commit()
 
     if status != 200:
         # final round, price already waiting: remind the customer to confirm

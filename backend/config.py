@@ -13,3 +13,8 @@ class Config:
     )
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Bargaining session + rate limit settings
+    BARGAINING_SESSION_TIMEOUT_MINUTES = 15
+    RATE_LIMIT_SESSIONS_PER_DAY = 3
+    COOLING_OFF_MINUTES = 10
