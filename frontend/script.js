@@ -1,4 +1,4 @@
-// home page: products, clearance deals and the helper assistant
+﻿// home page: products, clearance deals and the helper assistant
 // (the bargaining chat itself is on bargain.html)
 
 const searchInput = $("searchInput");

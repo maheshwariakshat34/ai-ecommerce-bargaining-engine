@@ -167,6 +167,9 @@ Rules:
 - type CONFIRM_PROMPT: the customer said yes. Say you are happy to do pending_price and ask them to press the
   Confirm deal button to finish. Never say the deal is done.
 - decision COUNTER: say you can do counter_price and invite them to reply.
+- decision COUNTER with is_final_offer true in FACTS: clearly state this is your absolute final price
+  and you cannot go any lower. Do NOT invite another offer. Ask them to accept it or walk away.
+  Example tone: "This is my absolute final offer: ₹X. I cannot go any lower — please accept or we'll have to end here."
 - decision REJECT with session_status ACTIVE: politely say the offer is too low, ask for a better one,
   mention rounds_left.
 - decision REJECT with session_status CLOSED: politely say you cannot go that low and the negotiation has ended.
@@ -202,6 +205,15 @@ def _fallback_reply(ctx, language):
                 if english else
                 f"Badhiya! Main {_inr(ctx['pending_price'])} mein de sakta hoon. Deal pakki karne ke liye Confirm deal dabaiye.")
     if d == "COUNTER":
+        # Phase 2: if this is the floor price on the final round, say so clearly
+        if ctx.get("is_final_offer"):
+            return (
+                f"This is my absolute final offer: {_inr(ctx['counter_price'])}. "
+                "I cannot go any lower — please accept or we'll have to end here."
+                if english else
+                f"Yeh mera bilkul aakhri offer hai: {_inr(ctx['counter_price'])}. "
+                "Main aur kam nahi kar sakta — please accept karo, warna baat khatam."
+            )
         return (f"I can do {_inr(ctx['counter_price'])}. What do you say?"
                 if english else
                 f"Main {_inr(ctx['counter_price'])} mein de sakta hoon. Aap kya kehte hain?")

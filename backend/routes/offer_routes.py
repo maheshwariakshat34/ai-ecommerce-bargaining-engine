@@ -374,6 +374,7 @@ def bargaining_chat():
         "session_status": result["session_status"],
         "awaiting_confirmation": result["awaiting_confirmation"],
         "pending_price": result["pending_price"],
+        "is_final_offer": result.get("is_final_offer", False),
         "understood": parsed
     }), 200
 

@@ -56,6 +56,8 @@
     <button class="tab-btn active" id="tabBtnDeals" onclick="switchTab('deals')">🤝 Bargaining Deals</button>
     <button class="tab-btn" id="tabBtnOrders" onclick="switchTab('orders')">📦 Placed Orders</button>
     <button class="tab-btn" id="tabBtnProducts" onclick="switchTab('products')">🏷️ Products &amp; Pricing</button>
+    <button class="tab-btn" id="tabBtnSessions" onclick="switchTab('sessions')">💬 All Sessions</button>
+    <button class="tab-btn" id="tabBtnRatelimits" onclick="switchTab('ratelimits')">🚫 Rate Limits</button>
   </div>
 
   <!-- TAB 1: DEALS TABLE -->
@@ -149,9 +151,62 @@
     </div>
   </div>
 
-</div>
+  <!-- TAB 4: ALL SESSIONS TABLE -->
+  <div id="tabSessions" class="tab-pane hidden">
+    <div class="table-header">
+      <h2>All Bargaining Sessions</h2>
+      <button class="refresh-btn" onclick="loadSessions()">🔄 Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table id="sessionsTable">
+        <thead>
+          <tr>
+            <th>Session #</th>
+            <th>Buyer</th>
+            <th>Email</th>
+            <th>Product</th>
+            <th>Qty</th>
+            <th>Rounds Used</th>
+            <th>Final Price</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="sessionsTbody">
+          <tr><td colspan="8" class="loading">Loading sessions…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-<!-- ADD / EDIT PRODUCT MODAL -->
+  <!-- TAB 5: RATE LIMITS TABLE -->
+  <div id="tabRatelimits" class="tab-pane hidden">
+    <div class="table-header">
+      <h2>Buyer Rate Limits</h2>
+      <button class="refresh-btn" onclick="loadRateLimits()">🔄 Refresh</button>
+    </div>
+    <p class="muted" style="margin:0 0 12px;padding:0 4px;font-size:13px;">
+      Max 3 sessions/day per product · 10 min cooldown between sessions
+    </p>
+    <div class="table-wrap">
+      <table id="rateLimitsTable">
+        <thead>
+          <tr>
+            <th>Buyer</th>
+            <th>Email</th>
+            <th>Product</th>
+            <th>Date</th>
+            <th>Sessions Used</th>
+            <th>Last Session At</th>
+          </tr>
+        </thead>
+        <tbody id="rateLimitsTbody">
+          <tr><td colspan="6" class="loading">Loading rate limits…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
 <div class="modal-overlay" id="productModal" hidden>
   <div class="modal-card">
     <div class="modal-header">

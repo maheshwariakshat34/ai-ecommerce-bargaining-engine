@@ -13,6 +13,8 @@ Rules:
 
 import math
 
+from backend.config import Config
+
 MAX_DISCOUNT_PERCENT = 50      # hard cap on clearance discount
 CLEARANCE_THRESHOLD = 0.20     # below this pressure -> no discount
 
@@ -91,18 +93,18 @@ def calculate_clearance_price(product):
 
     age_pressure = _clamp(inventory_age / AGE_MAX_DAYS)
 
-    # -----------------------------------------
+
     # 3. DEMAND PRESSURE
-    # -----------------------------------------
+
     demand_pressure = {
         "HIGH": 0.0,
         "MEDIUM": 0.5,
         "LOW": 1.0
     }.get(demand, 0.5)
 
-    # -----------------------------------------
+
     # 4. SALES TREND PRESSURE
-    # -----------------------------------------
+
     # Recent sales slower than the 30-day average = slowing demand.
     if average_rate > 0:
         velocity_pressure = _clamp(1 - recent_rate / average_rate)
@@ -110,9 +112,8 @@ def calculate_clearance_price(product):
         # No sales at all in 30 days
         velocity_pressure = 1.0 if stock > 0 else 0.0
 
-    # -----------------------------------------
+
     # 5. EXPIRY PRESSURE
-    # -----------------------------------------
     if days_to_expiry is None:
         expiry_pressure = 0.0
     else:
@@ -120,9 +121,8 @@ def calculate_clearance_price(product):
             (EXPIRY_WINDOW_DAYS - days_to_expiry) / EXPIRY_WINDOW_DAYS
         )
 
-    # -----------------------------------------
+
     # 6. TOTAL PRESSURE
-    # -----------------------------------------
     pressure_score = (
         inventory_pressure * 0.25
         + age_pressure * 0.20
@@ -155,9 +155,9 @@ def calculate_clearance_price(product):
 
     calculated_price = base_price * (1 - discount_percent / 100)
 
-    # -----------------------------------------
+
     # 8. COST PROTECTION (never below cost, never above base)
-    # -----------------------------------------
+
     clearance_price = round(
         min(max(_round_price(calculated_price), cost_price), base_price), 2
     )
@@ -220,3 +220,28 @@ def calculate_clearance_price(product):
         "cost_price_reached": clearance_price <= cost_price,
         "reasons": reasons
     }
+
+
+def calculate_dynamic_floor(product, pressure_score):
+    """
+    Calculate a clearance-aware bargaining floor.
+    High pressure -> floor approaches cost_price.
+    Low pressure -> floor approaches cost_price * (1 + max_markup).
+    """
+    if pressure_score is None:
+        pressure_score = 0.0
+
+    # Guard: if cost_price is missing or zero, floor cannot be calculated safely
+    if not product.cost_price:
+        return 0.0
+
+    # Get max markup from config (e.g., 0.10 for 10%)
+    max_markup = getattr(Config, 'BARGAINING_FLOOR_MAX_MARKUP_PCT', 0.10)
+
+    # If pressure is 1.0 (max), markup is 0. If pressure is 0.0, markup is max_markup.
+    current_markup = max_markup * (1.0 - pressure_score)
+
+    dynamic_floor = product.cost_price * (1.0 + current_markup)
+
+    # Hard safety limit: never go below cost price
+    return max(product.cost_price, dynamic_floor)

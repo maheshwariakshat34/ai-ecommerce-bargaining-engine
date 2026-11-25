@@ -63,6 +63,19 @@ def create_app():
     with app.app_context():
         db.create_all()
 
+        # Auto-seed: agar products ya seller account nahi hai toh automatically seed karo
+        from backend.models.product import Product
+        from backend.models.user import User as UserModel
+        needs_seed = Product.query.count() == 0 or UserModel.query.count() == 0
+        if needs_seed:
+            print("[auto-seed] DB empty detected — running seed automatically...")
+            try:
+                from backend import seed as seed_module
+                seed_module.seed()
+                print("[auto-seed] Done. Seller: seller@smartshop.com / seller123")
+            except Exception as e:
+                print(f"[auto-seed] Warning: seed failed — {e}")
+
     # ---------- Page routes (clean URLs, no .html in the browser) ----------
     @app.route("/")
     def home():

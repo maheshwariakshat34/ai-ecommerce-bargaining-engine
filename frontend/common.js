@@ -265,7 +265,7 @@ function showUser() {
         let dashboard = $("dashboardBtn");
         if (dashboard) dashboard.remove();
         let adminBtn = $("adminPanelBtn");
-        
+
     }
 }
 

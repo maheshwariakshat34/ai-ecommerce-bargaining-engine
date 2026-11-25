@@ -1,13 +1,15 @@
 /* seller.js — Complete Unified Seller & Inventory Dashboard */
 
 const API = {
-  dashboard: '/api/seller/dashboard',
-  deals:     '/api/seller/deals',
-  orders:    '/api/seller/orders',
-  products:  '/api/products?view=admin',
-  clearance: '/api/clearance/',
+  dashboard:   '/api/seller/dashboard',
+  deals:       '/api/seller/deals',
+  orders:      '/api/seller/orders',
+  sessions:    '/api/seller/sessions',
+  rateLimits:  '/api/seller/rate-limits',
+  products:    '/api/products?view=admin',
+  clearance:   '/api/clearance/',
   productSave: '/api/products',
-  logout:    '/api/auth/logout'
+  logout:      '/api/auth/logout'
 };
 
 const FIELDS = [
@@ -67,9 +69,11 @@ function switchTab(name) {
   const btn = document.getElementById(btnId);
   if (btn) btn.classList.add('active');
 
-  if (name === 'deals')    loadDeals();
-  if (name === 'orders')   loadOrders();
-  if (name === 'products') loadProducts();
+  if (name === 'deals')      loadDeals();
+  if (name === 'orders')     loadOrders();
+  if (name === 'products')   loadProducts();
+  if (name === 'sessions')   loadSessions();
+  if (name === 'ratelimits') loadRateLimits();
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
@@ -334,6 +338,82 @@ function showAuthError() {
 async function logoutSeller() {
   await fetch(API.logout, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   window.location.assign('/');
+}
+
+// ── Sessions table ──────────────────────────────────────────────────────────
+async function loadSessions() {
+  const tbody = document.getElementById('sessionsTbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading…</td></tr>';
+
+  try {
+    const res = await fetch(API.sessions);
+    if (!res.ok) throw new Error('Failed');
+    const rows = await res.json();
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">No sessions yet.</td></tr>';
+      return;
+    }
+
+    const STATUS_COLOR = {
+      ACCEPTED: 'green', CONFIRMED: 'green',
+      ACTIVE: 'orange', EXPIRED: 'red', CLOSED: 'red'
+    };
+
+    tbody.innerHTML = rows.map(r => {
+      const color = STATUS_COLOR[r.status] || 'blue';
+      const price = r.final_price != null ? '₹' + r.final_price.toLocaleString('en-IN') : '—';
+      return `<tr>
+        <td>#${r.session_id}</td>
+        <td>${r.buyer_name}</td>
+        <td class="muted">${r.buyer_email}</td>
+        <td>${r.product_name}</td>
+        <td>${r.quantity}</td>
+        <td>${r.rounds_used} / ${r.max_rounds}</td>
+        <td>${price}</td>
+        <td><span class="status-badge ${color}">${r.status}</span></td>
+      </tr>`;
+    }).join('');
+  } catch {
+    tbody.innerHTML = '<tr><td colspan="8" class="loading">Could not load sessions.</td></tr>';
+  }
+}
+
+// ── Rate Limits table ───────────────────────────────────────────────────────
+async function loadRateLimits() {
+  const tbody = document.getElementById('rateLimitsTbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading…</td></tr>';
+
+  try {
+    const res = await fetch(API.rateLimits);
+    if (!res.ok) throw new Error('Failed');
+    const rows = await res.json();
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">No rate limit records yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => {
+      const maxed = r.session_count >= 3;
+      const badge = maxed
+        ? '<span class="status-badge red">Maxed Out</span>'
+        : '<span class="status-badge green">' + r.session_count + ' / 3</span>';
+      const lastAt = r.last_session_at
+        ? new Date(r.last_session_at).toLocaleString('en-IN')
+        : '—';
+      return `<tr>
+        <td>${r.user_name}</td>
+        <td class="muted">${r.user_email}</td>
+        <td>${r.product_name}</td>
+        <td>${r.date}</td>
+        <td>${badge}</td>
+        <td class="muted">${lastAt}</td>
+      </tr>`;
+    }).join('');
+  } catch {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Could not load rate limits.</td></tr>';
+  }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────

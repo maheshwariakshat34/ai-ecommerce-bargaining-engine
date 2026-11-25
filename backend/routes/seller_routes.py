@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify
 from backend.services.security import admin_required
 from backend.models.product import db
 from backend.models.bargaining_session import BargainingSession
+from backend.models.bargaining_rate_limit import BargainingRateLimit
 from backend.models.order import Order, OrderItem
 from backend.models.user import User
 from backend.models.product import Product
@@ -104,6 +105,7 @@ def deals():
     return jsonify(result)
 
 
+
 # ── 3. All placed orders ──────────────────────────────────────────────────────
 @seller_bp.get("/orders")
 @admin_required
@@ -128,3 +130,4 @@ def orders():
         })
 
     return jsonify(result)
+

@@ -14,10 +14,7 @@ from backend.models.bargaining_session import BargainingSession
 from backend.models.offer import Offer
 from backend.models.bargaining_rate_limit import BargainingRateLimit
 from backend.services.pricing_engine import calculate_pricing
-
-# In clearance mode the floor is the cost price. Keep a small margin above it
-# so that a final-round deal never happens at exactly zero profit.
-SAFETY_MARGIN = 0.02
+from backend.services.clearance_engine import calculate_dynamic_floor
 
 # Final round: the customer must cover this share of the gap between the
 # negotiation floor and the seller's last price (last counter, or target if
@@ -71,14 +68,14 @@ def check_rate_limit(user_id, product_id):
         return True, ""
     if record.session_count >= max_sessions:
         return False, (
-            f"Aap aaj is product par {max_sessions} baar bargain kar chuke ho. "
-            "Kal dobara try karo."
+            f"You have already bargained {max_sessions} times on this product today. "
+            "Please try again tomorrow."
         )
     if record.last_session_at:
         elapsed = (datetime.utcnow() - record.last_session_at).total_seconds() / 60
         if elapsed < cooling_off:
             remaining = int(cooling_off - elapsed) + 1
-            return False, f"Thoda wait karo. {remaining} minute baad dobara try karo."
+            return False, f"Please wait {remaining} minute(s) before starting a new session."
     return True, ""
 
 
@@ -206,11 +203,17 @@ def process_offer(session_id, customer_offer):
     cost_total = float(pricing["cost_total"])
     normal_minimum_total = float(pricing["normal_minimum_total"])
 
+    # Phase 2: dynamic floor — scales with clearance pressure so a heavily
+    # discounted product floors lower than a healthy-stock one.
+    pressure = pricing["pressure_score"]
+    floor_unit = calculate_dynamic_floor(product, pressure)
+    dynamic_floor_total = floor_unit * quantity
+
     if clearance_total < normal_minimum_total:
-        # clearance mode: floor is cost plus a small margin (never above the list price)
-        negotiation_floor = min(cost_total * (1 + SAFETY_MARGIN), clearance_total)
+        # Clearance mode: use dynamic floor, but never above the clearance price
+        negotiation_floor = min(dynamic_floor_total, clearance_total)
     else:
-        negotiation_floor = max(cost_total, normal_minimum_total)
+        negotiation_floor = max(dynamic_floor_total, normal_minimum_total)
 
     target_price = round(max(bulk_price, negotiation_floor), 2)
     customer_offer = round(customer_offer, 2)
@@ -234,6 +237,7 @@ def process_offer(session_id, customer_offer):
     )
 
     accept_price = None
+    is_final_counter = False   # Phase 2: signals this is the absolute floor offer
 
     # The seller's own standing price comes first, so a customer is never asked
     # to pay more than a price the seller already offered.
@@ -255,10 +259,14 @@ def process_offer(session_id, customer_offer):
         )
 
     elif is_final_round:
-        decision = "REJECT"
+        # Phase 2 fix: instead of a hard REJECT on the final round, counter at
+        # exactly the dynamic floor so the buyer always gets one last clear price.
+        decision = "COUNTER"
+        counter_price = round(negotiation_floor, 2)
+        is_final_counter = True
         message = (
-            "Final offer rejected because it is below "
-            "the lowest price the seller can accept."
+            f"This is our absolute final price: {counter_price:.2f}. "
+            "We cannot go any lower."
         )
 
     elif customer_offer >= target_price * 0.80:
@@ -303,6 +311,10 @@ def process_offer(session_id, customer_offer):
         session.confirming = True
         if not is_final_round:
             session.current_round += 1
+    elif is_final_round and is_final_counter:
+        # Phase 2: bot countered at floor on final round — set confirming so the
+        # buyer can only accept or walk away; session stays ACTIVE for confirmation.
+        session.confirming = True
     elif is_final_round:
         session.status = "CLOSED"
     else:
@@ -334,6 +346,7 @@ def process_offer(session_id, customer_offer):
         "session_status": session.status,
         "awaiting_confirmation": decision == "CONFIRM",
         "pending_price": counter_price if decision == "CONFIRM" else None,
+        "is_final_offer": is_final_counter,
         "pricing": {
             "base_total": pricing["base_total"],
             "clearance_unit_price": pricing["clearance_unit_price"],

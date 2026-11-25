@@ -157,24 +157,25 @@ function loginExpired() {
     addMessage("system", "Your login has expired.", link);
 }
 
-// --- SESSION EXPIRED: chat band karo, "Start New Session" button dikhao ---
+// session expired mid-bargain — show a banner with a "Start New Session" button
 function showExpiredBanner() {
-    $(\"acceptBar\").hidden = true;
+    const acceptBar = $("acceptBar");
+    if (acceptBar) acceptBar.hidden = true;
 
     const banner = document.createElement("div");
-    banner.className = "bubble bubble--expired";
-    banner.style.cssText = "background:#fee2e2;border:1px solid #f87171;color:#991b1b;padding:12px 16px;border-radius:8px;margin:8px 0;";
+    banner.style.cssText = "background:#fee2e2;border:1px solid #f87171;color:#991b1b;" +
+        "padding:12px 16px;border-radius:8px;margin:8px 0;font-size:14px;";
 
     const msg = document.createElement("p");
-    msg.style.margin = "0 0 10px";
-    msg.textContent = "⏰ Session expire ho gaya. Naya session shuru karo.";
+    msg.style.margin = "0 0 10px 0";
+    msg.textContent = "⏰ This session has expired. Please start a new session.";
 
     const btn = document.createElement("button");
     btn.textContent = "🔄 Start New Session";
-    btn.className = "b-start";
-    btn.style.cssText = "margin-top:4px;padding:8px 16px;cursor:pointer;";
+    btn.type = "button";
+    btn.style.cssText = "padding:8px 16px;cursor:pointer;border-radius:6px;" +
+        "background:#ef4444;color:#fff;border:none;font-weight:600;";
     btn.addEventListener("click", function () {
-        // Strip the stale ?session= param and reload so the user starts fresh
         const params = new URLSearchParams(window.location.search);
         params.delete("session");
         const newUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "");
@@ -184,7 +185,7 @@ function showExpiredBanner() {
     banner.appendChild(msg);
     banner.appendChild(btn);
     chatLog.appendChild(banner);
-    scrollChatToEnd();
+    chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function showProblem(html) {
@@ -384,13 +385,6 @@ async function startSession() {
             return;
         }
 
-        // --- RATE LIMIT (429): user ne aaj bahut sessions shuru kar diye ---
-        if (result.status === 429) {
-            $(\"setupError\").textContent = result.data.error || \"Bahut zyada sessions. Thodi der baad try karo.\";
-            $(\"startBtn\").disabled = false;
-            return;
-        }
-
         if (!result.ok) {
             $("setupError").textContent = result.data.error || "Could not start bargaining. Please try again.";
             $("startBtn").disabled = false;
@@ -442,10 +436,9 @@ async function sendMessage(text) {
         if (!result.ok) {
             if (result.status === 401) {
                 loginExpired();
-            // --- SESSION EXPIRED (410): session timeout ho gaya ---
             } else if (result.status === 410 || result.data.session_expired) {
                 finished = true;
-                addMessage("system", result.data.error || "Ye bargaining session expire ho gaya. Naya session shuru karo.");
+                addMessage("system", result.data.error || "Session expired. Please start a new session.");
                 showExpiredBanner();
                 updateInput();
             } else if (result.status === 429) {
@@ -483,16 +476,13 @@ async function acceptCounter() {
 
         if (result.status === 401) {
             loginExpired();
+        } else if (result.status === 410 || (result.data && result.data.session_expired)) {
+            finished = true;
+            addMessage("system", result.data.error || "Session expired. Please start a new session.");
+            showExpiredBanner();
+            updateInput();
         } else if (!result.ok) {
-            // --- SESSION EXPIRED (410) during confirm ---
-            if (result.status === 410 || (result.data && result.data.session_expired)) {
-                finished = true;
-                addMessage("system", result.data.error || "Ye bargaining session expire ho gaya. Naya session shuru karo.");
-                showExpiredBanner();
-                updateInput();
-            } else {
-                addMessage("system", result.data.error || "Could not confirm the deal. Please try again.");
-            }
+            addMessage("system", result.data.error || "Could not confirm the deal. Please try again.");
         } else {
             const data = result.data;
 
@@ -595,10 +585,10 @@ async function openOldSession(id, allProducts) {
     } else if (session.status === "CLOSED") {
         noDeal();
     } else if (session.status === "EXPIRED") {
-        // --- Restored session is already expired: dikhao aur band karo ---
         finished = true;
-        addMessage("system", "Ye session expire ho chuka hai.");
+        addMessage("system", "This session has expired. Please start a new session.");
         showExpiredBanner();
+        updateInput();
     } else {
         addMessage("assistant",
             "Welcome back! You have used " + rounds.length + " of " + maxRounds +
