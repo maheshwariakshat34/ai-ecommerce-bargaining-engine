@@ -1,6 +1,7 @@
 # Flask instance folders (database, local config)
-instance/
-backend/instance/
+# instance/ folder ab git mein track hoga taaki DB persist rahe
+# instance/
+# backend/instance/
 
 # Python
 __pycache__/
@@ -15,10 +16,10 @@ env/
 # Environment variables
 .env
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# Database — ab git mein track hogi
+# *.db
+# *.sqlite
+# *.sqlite3
 
 # ML
 *.pkl
