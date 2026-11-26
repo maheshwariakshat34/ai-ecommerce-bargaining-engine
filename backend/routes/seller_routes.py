@@ -1,8 +1,10 @@
 """
 Seller Dashboard API Routes
-GET /api/seller/dashboard  — summary stats
-GET /api/seller/deals      — all confirmed/accepted bargaining deals
-GET /api/seller/orders     — all placed orders
+GET /api/seller/dashboard   — summary stats
+GET /api/seller/deals       — all confirmed/accepted bargaining deals
+GET /api/seller/orders      — all placed orders
+GET /api/seller/sessions    — all bargaining sessions (any status)
+GET /api/seller/rate-limits — buyer rate limit records
 """
 
 from flask import Blueprint, jsonify
@@ -43,26 +45,23 @@ def dashboard():
     total_orders = Order.query.count()
     total_revenue = db.session.query(func.sum(Order.total)).scalar() or 0.0
 
-    # Revenue from bargained deals
     deal_revenue = (
-        db.session.query(
-            func.sum(BargainingSession.final_price)
-        )
+        db.session.query(func.sum(BargainingSession.final_price))
         .filter(BargainingSession.status.in_(DEAL_STATUSES))
         .scalar()
         or 0.0
     )
 
     return jsonify({
-        "total_deals":       total_deals,
-        "active_sessions":   active_sessions,
-        "total_orders":      total_orders,
-        "total_revenue":     round(float(total_revenue), 2),
-        "deal_revenue":      round(float(deal_revenue), 2),
+        "total_deals":     total_deals,
+        "active_sessions": active_sessions,
+        "total_orders":    total_orders,
+        "total_revenue":   round(float(total_revenue), 2),
+        "deal_revenue":    round(float(deal_revenue), 2),
     })
 
 
-# ── 2. All confirmed bargaining deals ────────────────────────────────────────
+# ── 2. Confirmed bargaining deals ────────────────────────────────────────────
 @seller_bp.get("/deals")
 @admin_required
 def deals():
@@ -81,7 +80,6 @@ def deals():
         qty = max(s.quantity, 1)
         total_deal_price = round(float(s.final_price or 0), 2)
         unit_deal_price = round(total_deal_price / qty, 2)
-
         base_unit_price = round(float(product.base_price if product else 0), 2)
         original_total = round(base_unit_price * qty, 2)
         saved = round(max(original_total - total_deal_price, 0), 2)
@@ -103,7 +101,6 @@ def deals():
         })
 
     return jsonify(result)
-
 
 
 # ── 3. All placed orders ──────────────────────────────────────────────────────
@@ -131,3 +128,53 @@ def orders():
 
     return jsonify(result)
 
+
+# ── 4. All bargaining sessions ────────────────────────────────────────────────
+@seller_bp.get("/sessions")
+@admin_required
+def all_bargaining_sessions():
+    rows = (
+        BargainingSession.query
+        .order_by(BargainingSession.id.desc())
+        .all()
+    )
+    result = []
+    for s in rows:
+        product = db.session.get(Product, s.product_id)
+        user = _user_info(s.user_id)
+        result.append({
+            "session_id":   s.id,
+            "buyer_name":   user["name"],
+            "buyer_email":  user["email"],
+            "product_name": product.name if product else f"Product #{s.product_id}",
+            "quantity":     s.quantity,
+            "rounds_used":  s.current_round,
+            "max_rounds":   s.max_rounds,
+            "status":       s.status,
+            "final_price":  round(float(s.final_price), 2) if s.final_price else None,
+        })
+    return jsonify(result)
+
+
+# ── 5. Rate limits table ──────────────────────────────────────────────────────
+@seller_bp.get("/rate-limits")
+@admin_required
+def buyer_rate_limits():
+    records = (
+        BargainingRateLimit.query
+        .order_by(BargainingRateLimit.date.desc(), BargainingRateLimit.session_count.desc())
+        .all()
+    )
+    result = []
+    for r in records:
+        user = _user_info(r.user_id)
+        product = db.session.get(Product, r.product_id)
+        result.append({
+            "user_name":       user["name"],
+            "user_email":      user["email"],
+            "product_name":    product.name if product else f"Product #{r.product_id}",
+            "date":            r.date.isoformat() if r.date else None,
+            "session_count":   r.session_count,
+            "last_session_at": r.last_session_at.isoformat() if r.last_session_at else None,
+        })
+    return jsonify(result)

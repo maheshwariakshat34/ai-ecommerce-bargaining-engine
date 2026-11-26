@@ -17,7 +17,7 @@ class Config:
     # Bargaining session + rate limit settings
     BARGAINING_SESSION_TIMEOUT_MINUTES = 15
     RATE_LIMIT_SESSIONS_PER_DAY = 3
-    COOLING_OFF_MINUTES = 10
+    COOLING_OFF_MINUTES =0
 
     # Phase 2: Dynamic Bargaining Floor Settings
     # Maximum markup over cost price when pressure is LOW (e.g., 10% markup).
